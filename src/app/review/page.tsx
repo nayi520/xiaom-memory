@@ -36,6 +36,8 @@ export default async function ReviewPage() {
     .lte('fsrs_state->>due', nowIso);
 
   // 到期卡片（多取一些，在内存里按遗忘风险排序后取前 20）
+  // 溯源记录排除软删（deleted_at is null）：回收站内的记录不在复习溯源里露出；
+  // 该过滤只作用于 notes 这层嵌套，卡片本身仍保留（即便其唯一来源记录被删）。
   const { data } = await supabase
     .from('cards')
     .select(
@@ -48,6 +50,7 @@ export default async function ReviewPage() {
        )`
     )
     .eq('status', 'active')
+    .is('concept.note_concepts.note.deleted_at', null)
     .lte('fsrs_state->>due', nowIso)
     .order('fsrs_state->>due', { ascending: true })
     .limit(100);

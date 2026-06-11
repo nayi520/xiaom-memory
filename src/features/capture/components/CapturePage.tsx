@@ -25,6 +25,7 @@ export default function CapturePage() {
     supabase
       .from('notes')
       .select('*')
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(3)
       .then(({ data }) => {
@@ -60,6 +61,11 @@ export default function CapturePage() {
     );
   }, []);
 
+  /** 软删后从最近列表乐观移除（F5） */
+  const removeNote = useCallback((id: string) => {
+    setRecent((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
   const handlers = { addOptimistic, confirmNote, updateNote, failNote };
 
   return (
@@ -91,7 +97,7 @@ export default function CapturePage() {
         {tab === 'voice' && <VoiceCapture {...handlers} />}
         {tab === 'link' && <LinkCapture {...handlers} />}
 
-        <RecentNotes items={recent} />
+        <RecentNotes items={recent} onTrash={removeNote} />
       </div>
     </main>
   );

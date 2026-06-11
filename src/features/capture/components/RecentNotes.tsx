@@ -1,6 +1,7 @@
 'use client';
 
 import type { RecentItem } from '../types';
+import NoteDeleteButton from './NoteDeleteButton';
 
 const TYPE_ICON: Record<string, string> = {
   text: '✏️',
@@ -24,7 +25,13 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString('zh-CN');
 }
 
-export default function RecentNotes({ items }: { items: RecentItem[] }) {
+export default function RecentNotes({
+  items,
+  onTrash,
+}: {
+  items: RecentItem[];
+  onTrash?: (id: string) => void;
+}) {
   if (items.length === 0) return null;
 
   return (
@@ -61,6 +68,13 @@ export default function RecentNotes({ items }: { items: RecentItem[] }) {
                   {item.failed && <span className="text-red-500">✕ 失败</span>}
                 </p>
               </div>
+              {/* 已落库的记录才可删除（乐观占位 / 保存中不显示） */}
+              {!item.pending && !item.failed && !item.id.startsWith('temp-') && (
+                <NoteDeleteButton
+                  noteId={item.id}
+                  onTrashed={() => onTrash?.(item.id)}
+                />
+              )}
             </div>
           </li>
         ))}

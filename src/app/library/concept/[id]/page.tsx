@@ -57,9 +57,10 @@ export default async function ConceptDetailPage({
     supabase
       .from('note_concepts')
       .select(
-        'note:notes(id, type, raw_content, transcript, url, summary, why_important, created_at)'
+        'note:notes!inner(id, type, raw_content, transcript, url, summary, why_important, created_at)'
       )
-      .eq('concept_id', concept.id),
+      .eq('concept_id', concept.id)
+      .is('note.deleted_at', null),
     supabase
       .from('cards')
       .select('id, question, status, fsrs_state')

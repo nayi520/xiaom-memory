@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import DigestNowButton from '@/features/digest/components/DigestNowButton';
 import PushToggle from '@/features/review/components/PushToggle';
 
@@ -25,6 +26,25 @@ export default function SettingsPage() {
           复习提醒
         </h2>
         <PushToggle />
+      </section>
+
+      <section className="mt-8 space-y-2">
+        <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
+          记录管理
+        </h2>
+        <Link
+          href="/trash"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-4 transition active:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:active:bg-zinc-800"
+        >
+          <span className="flex items-center gap-2 font-medium">
+            <span aria-hidden>🗑️</span>
+            回收站
+          </span>
+          <span className="text-sm text-zinc-400" aria-hidden>
+            ›
+          </span>
+        </Link>
+        <p className="text-xs text-zinc-400">删除的记录会先移到回收站，可恢复或永久删除。</p>
       </section>
     </main>
   );

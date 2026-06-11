@@ -164,12 +164,13 @@ export async function runLibrarySearch(
   const pattern = `%${escapeIlike(query)}%`;
 
   // ---- 关键词（ILIKE 多字段） + 标签精确匹配，并行 ----
+  // notes 各路均排除软删记录（deleted_at is null），回收站内容不进搜索结果
   const [cName, cSummary, nRaw, nSummary, nWhy, tagRes] = await Promise.all([
     supabase.from('concepts').select(CONCEPT_COLS).ilike('name', pattern).limit(KEYWORD_LIMIT),
     supabase.from('concepts').select(CONCEPT_COLS).ilike('summary', pattern).limit(KEYWORD_LIMIT),
-    supabase.from('notes').select(NOTE_COLS).ilike('raw_content', pattern).limit(KEYWORD_LIMIT),
-    supabase.from('notes').select(NOTE_COLS).ilike('summary', pattern).limit(KEYWORD_LIMIT),
-    supabase.from('notes').select(NOTE_COLS).ilike('why_important', pattern).limit(KEYWORD_LIMIT),
+    supabase.from('notes').select(NOTE_COLS).is('deleted_at', null).ilike('raw_content', pattern).limit(KEYWORD_LIMIT),
+    supabase.from('notes').select(NOTE_COLS).is('deleted_at', null).ilike('summary', pattern).limit(KEYWORD_LIMIT),
+    supabase.from('notes').select(NOTE_COLS).is('deleted_at', null).ilike('why_important', pattern).limit(KEYWORD_LIMIT),
     supabase.from('tags').select('id').eq('name', query).maybeSingle(),
   ]);
 
@@ -181,13 +182,14 @@ export async function runLibrarySearch(
     ...((nWhy.data ?? []) as NoteRow[]).map(noteToHit),
   ];
 
-  // ---- 标签命中的记录 ----
+  // ---- 标签命中的记录（!inner + deleted_at is null：排除软删记录） ----
   let tagHits: RawHit[] = [];
   if (tagRes.data?.id) {
     const { data } = await supabase
       .from('note_tags')
-      .select(`note:notes(${NOTE_COLS})`)
-      .eq('tag_id', tagRes.data.id);
+      .select(`note:notes!inner(${NOTE_COLS})`)
+      .eq('tag_id', tagRes.data.id)
+      .is('note.deleted_at', null);
     tagHits = ((data ?? []) as unknown as { note: NoteRow | null }[])
       .map((r) => r.note)
       .filter((n): n is NoteRow => n !== null)

@@ -22,6 +22,7 @@ export function createSupabaseDigestStore(supabase: SupabaseClient): DigestStore
         .from('notes')
         .select('user_id')
         .eq('status', 'inbox')
+        .is('deleted_at', null)
         .gte('created_at', fromIso)
         .lt('created_at', toIso);
       throwIf(error, '查询 inbox 用户失败');
@@ -34,6 +35,7 @@ export function createSupabaseDigestStore(supabase: SupabaseClient): DigestStore
         .select('*')
         .eq('user_id', userId)
         .eq('status', 'inbox')
+        .is('deleted_at', null)
         .gte('created_at', fromIso)
         .lt('created_at', toIso)
         .order('created_at', { ascending: true });

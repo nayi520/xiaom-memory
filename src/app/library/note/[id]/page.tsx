@@ -8,6 +8,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import NoteAudio from '@/features/library/components/NoteAudio';
 import NoteTagEditor from '@/features/library/components/NoteTagEditor';
+import NoteDeleteButton from '@/features/capture/components/NoteDeleteButton';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '记录 · 小M' };
@@ -33,12 +34,14 @@ export default async function NoteDetailPage({
 }) {
   const supabase = createClient();
 
+  // 已软删（移入回收站）的记录视为不存在；恢复后可再访问
   const { data: note } = await supabase
     .from('notes')
     .select(
       'id, type, raw_content, transcript, url, media_path, why_important, summary, status, created_at'
     )
     .eq('id', params.id)
+    .is('deleted_at', null)
     .maybeSingle();
   if (!note) notFound();
 
@@ -69,6 +72,9 @@ export default async function NoteDetailPage({
         </Link>
         <span>›</span>
         <span className="font-medium text-zinc-600 dark:text-zinc-300">原始记录</span>
+        <span className="ml-auto">
+          <NoteDeleteButton noteId={note.id} redirectTo="/library" />
+        </span>
       </nav>
 
       {/* 原文 / 链接 / 音频 */}

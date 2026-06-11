@@ -49,12 +49,16 @@ export default async function LibraryPage({ searchParams }: Props) {
   }
 
   // ---- 下钻模式：一次取全量概念 + 记录关联数（个人库数据量小，内存聚合即可） ----
+  // note_concepts 内连接 notes 并过滤 deleted_at is null：回收站内的记录不计入条数
   const [{ data: conceptData }, { data: ncData }] = await Promise.all([
     supabase
       .from('concepts')
       .select('id, name, domain, topic, created_at')
       .order('created_at', { ascending: false }),
-    supabase.from('note_concepts').select('concept_id'),
+    supabase
+      .from('note_concepts')
+      .select('concept_id, note:notes!inner(id)')
+      .is('note.deleted_at', null),
   ]);
   const concepts = (conceptData ?? []) as ConceptRow[];
   const noteCount = new Map<string, number>();
