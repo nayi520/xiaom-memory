@@ -1,0 +1,53 @@
+# =============================================================================
+# 小M (Memory) · 系统 crontab —— 定时调用 Next 的 cron 接口
+# =============================================================================
+# 替代 Vercel Cron（原 vercel.json 的 crons）。用系统 crontab + curl 打本站接口。
+#
+# 接口鉴权：Authorization: Bearer <CRON_SECRET>（与 .env.production 里的 CRON_SECRET 一致）。
+#   - GET/POST 均可（两个 route 同逻辑），这里用默认 GET。
+#   - CRON_SECRET 错误会 401；未配置会 500；缺 LLM/VAPID key 会 503（接口内优雅降级）。
+#
+# 【重要：时区】下面按【北京时间】写「23:00 跑 digest」，前提是系统时区 = Asia/Shanghai。
+#   先确认并设置（一次性）：
+#       timedatectl                                  # 查看 Time zone
+#       sudo timedatectl set-timezone Asia/Shanghai  # 设为北京时间
+#       sudo systemctl restart cron                  # 让 cron 用新时区
+#   若系统时区保持 UTC，请把 digest 的 "0 23" 改成 "0 15"（UTC 15:00 == 北京 23:00）。
+#   remind 每整点跑，不受时区影响（接口内部按北京小时筛选到点用户，见 remind/route.ts）。
+#
+# 【安装】把下面两行 cron 任务加入【运行应用的那个用户】的 crontab（勿用 root，
+#   除非 .env / 密钥归 root；与 growth/okr 的定时任务互不干扰，只是新增两行）：
+#       crontab -e
+#   或非交互导入（会【覆盖】该用户现有 crontab，谨慎；建议先 crontab -l 备份）：
+#       crontab -l > /tmp/cron.bak 2>/dev/null; cat deploy/crontab.txt >> /tmp/cron.bak; crontab /tmp/cron.bak
+#
+# 【CRON_SECRET 来源】crontab 不读 .env.production。两种做法择一：
+#   (A) 直接把密文写进下面的 Bearer（简单，但密钥进了 crontab 文件，注意权限）。
+#   (B) 在本文件顶部用 cron 的环境变量行声明（见下），把 <CRON_SECRET> 写成 $CRON_SECRET。
+#       cron 支持在 crontab 内用 KEY=VALUE 行设置环境变量（不支持 $(...) 展开）。
+# =============================================================================
+
+# ---- (可选) cron 内环境变量：用法 (B) 时取消注释并填入真实密钥 ----------------
+# 注意：crontab 的环境变量行不做 shell 展开，等号右侧就是字面值，勿加引号。
+# SHELL=/bin/bash
+# PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# CRON_SECRET=粘贴与_env.production_一致的密钥
+
+# ---- 每晚 23:00（北京时间）：AI 每日整理流水线 -------------------------------
+# 分 时 日 月 周
+0 23 * * * curl -fsS -m 280 -X POST -H "Authorization: Bearer $CRON_SECRET" https://memory.nayitools.cn/api/cron/digest >> /var/log/xiaom-cron-digest.log 2>&1
+
+# ---- 每整点（00 分）：复习提醒（接口内按用户 reminderHour 筛选到点者）---------
+0 * * * * curl -fsS -m 50 -H "Authorization: Bearer $CRON_SECRET" https://memory.nayitools.cn/api/cron/remind >> /var/log/xiaom-cron-remind.log 2>&1
+
+# =============================================================================
+# 备注：
+# - 用法 (A)（不声明 CRON_SECRET 环境变量）时，把上面两行里的 $CRON_SECRET
+#   直接替换成真实密钥字符串。
+# - -f 让 curl 在 HTTP >=400 时返回非零（cron 失败可被监控/邮件感知）；
+#   -m 设超时（digest 给到 280s 与接口 maxDuration=300 留余量）。
+# - 日志写到 /var/log/xiaom-cron-*.log；首次需确保该路径可写
+#   （或改写到运行用户家目录，如 ~/xiaom-cron-digest.log）。建议配 logrotate。
+# - 想验证接口连通（不等到点）：手动跑一次
+#       curl -i -X POST -H "Authorization: Bearer <密钥>" https://memory.nayitools.cn/api/cron/digest
+# =============================================================================
