@@ -1,11 +1,14 @@
 /**
  * 回收站（PRD F5 记录软删除回收站）
  * 列出已移入回收站（deleted_at 非空）的记录，每条可恢复 / 永久删除。
- * 入口：设置页「回收站」。RLS 已按 user_id 隔离，只会看到自己的记录。
+ * 入口：设置页「回收站」。授权改应用层：显式按 user_id 过滤，只会看到自己的记录。
  */
 
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
+import { and, desc, eq, isNotNull } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
+import { getDb } from '@/lib/db/client';
+import { notes } from '@/lib/db/schema';
 import TrashItemActions from '@/features/trash/components/TrashItemActions';
 
 export const dynamic = 'force-dynamic';
@@ -36,17 +39,29 @@ function preview(note: TrashedNote): string {
 }
 
 export default async function TrashPage() {
-  const supabase = createClient();
+  const user = await getCurrentUser();
+  const rows = user
+    ? await getDb()
+        .select({
+          id: notes.id,
+          type: notes.type,
+          raw_content: notes.rawContent,
+          transcript: notes.transcript,
+          url: notes.url,
+          why_important: notes.whyImportant,
+          summary: notes.summary,
+          deleted_at: notes.deletedAt,
+        })
+        .from(notes)
+        .where(and(eq(notes.userId, user.id), isNotNull(notes.deletedAt)))
+        .orderBy(desc(notes.deletedAt))
+    : [];
 
-  const { data } = await supabase
-    .from('notes')
-    .select(
-      'id, type, raw_content, transcript, url, why_important, summary, deleted_at'
-    )
-    .not('deleted_at', 'is', null)
-    .order('deleted_at', { ascending: false });
-
-  const notes = (data ?? []) as TrashedNote[];
+  const trashedNotes: TrashedNote[] = rows.map((r) => ({
+    ...r,
+    deleted_at:
+      r.deleted_at instanceof Date ? r.deleted_at.toISOString() : String(r.deleted_at),
+  }));
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-24 pt-6">
@@ -65,13 +80,13 @@ export default async function TrashPage() {
         </p>
       </header>
 
-      {notes.length === 0 ? (
+      {trashedNotes.length === 0 ? (
         <p className="mt-10 text-center text-sm text-zinc-400">
           回收站是空的。
         </p>
       ) : (
         <ul className="space-y-2">
-          {notes.map((note) => (
+          {trashedNotes.map((note) => (
             <li
               key={note.id}
               className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900"

@@ -6,7 +6,10 @@
  */
 
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
+import { and, desc, eq, isNull } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
+import { getDb } from '@/lib/db/client';
+import { concepts as conceptsTable, noteConcepts, notes } from '@/lib/db/schema';
 import { runLibrarySearch } from '@/features/library/search';
 import SearchResults from '@/features/library/components/SearchResults';
 
@@ -28,18 +31,16 @@ interface Props {
 }
 
 export default async function LibraryPage({ searchParams }: Props) {
-  const supabase = createClient();
+  const user = await getCurrentUser();
+  const db = getDb();
   const q = (searchParams.q ?? '').trim();
   const domain = searchParams.domain?.trim() || null;
   const topic = searchParams.topic?.trim() || null;
 
   // ---- 搜索模式 ----
   if (q) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
     const result = user
-      ? await runLibrarySearch(supabase, user.id, q)
+      ? await runLibrarySearch(db, user.id, q)
       : { hits: [], semanticUsed: false };
     return (
       <Shell q={q}>
@@ -48,22 +49,47 @@ export default async function LibraryPage({ searchParams }: Props) {
     );
   }
 
+  // 未登录：空库（中间件已会拦截，这里仅类型与降级兜底）
+  if (!user) {
+    return (
+      <Shell q={q}>
+        <DrillList empty="请先登录。" items={[]} />
+      </Shell>
+    );
+  }
+
   // ---- 下钻模式：一次取全量概念 + 记录关联数（个人库数据量小，内存聚合即可） ----
-  // note_concepts 内连接 notes 并过滤 deleted_at is null：回收站内的记录不计入条数
-  const [{ data: conceptData }, { data: ncData }] = await Promise.all([
-    supabase
-      .from('concepts')
-      .select('id, name, domain, topic, created_at')
-      .order('created_at', { ascending: false }),
-    supabase
-      .from('note_concepts')
-      .select('concept_id, note:notes!inner(id)')
-      .is('note.deleted_at', null),
+  // 显式按 user_id 过滤（原靠 RLS）；note_concepts 内连接 notes 过滤 deleted_at is null：
+  // 回收站内的记录不计入条数。note_concepts 经 concept join 限定到本人概念。
+  const [conceptData, ncData] = await Promise.all([
+    db
+      .select({
+        id: conceptsTable.id,
+        name: conceptsTable.name,
+        domain: conceptsTable.domain,
+        topic: conceptsTable.topic,
+        created_at: conceptsTable.createdAt,
+      })
+      .from(conceptsTable)
+      .where(eq(conceptsTable.userId, user.id))
+      .orderBy(desc(conceptsTable.createdAt)),
+    db
+      .select({ concept_id: noteConcepts.conceptId })
+      .from(noteConcepts)
+      .innerJoin(notes, eq(notes.id, noteConcepts.noteId))
+      .innerJoin(conceptsTable, eq(conceptsTable.id, noteConcepts.conceptId))
+      .where(and(eq(conceptsTable.userId, user.id), isNull(notes.deletedAt))),
   ]);
-  const concepts = (conceptData ?? []) as ConceptRow[];
+  const concepts: ConceptRow[] = conceptData.map((c) => ({
+    id: c.id,
+    name: c.name,
+    domain: c.domain,
+    topic: c.topic,
+    created_at: c.created_at instanceof Date ? c.created_at.toISOString() : String(c.created_at),
+  }));
   const noteCount = new Map<string, number>();
-  for (const row of ncData ?? []) {
-    const id = row.concept_id as string;
+  for (const row of ncData) {
+    const id = row.concept_id;
     noteCount.set(id, (noteCount.get(id) ?? 0) + 1);
   }
   const domainOf = (c: ConceptRow) => c.domain?.trim() || UNCATEGORIZED;

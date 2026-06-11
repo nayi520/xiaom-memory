@@ -6,7 +6,7 @@
  *      → 每对调 P3 确认关联 → 全部完成后 P4 生成日报 → notes 标记 processed。
  * 单条失败标记 needs_review，不阻塞批处理。
  *
- * 数据访问通过 DigestStore 接口注入（生产用 Supabase 实现，测试用内存实现）。
+ * 数据访问通过 DigestStore 接口注入（生产用 Drizzle 实现，测试用内存实现）。
  */
 
 import {

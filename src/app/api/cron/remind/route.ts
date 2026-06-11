@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import webpush from 'web-push';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { getDb } from '@/lib/db/client';
+import {
+  cards,
+  concepts,
+  digests,
+  profiles,
+  pushSubscriptions,
+} from '@/lib/db/schema';
 import { estimateMinutes } from '@/features/review/fsrs';
 import { DIGEST_TIMEZONE } from '@/features/digest/pipeline';
 
@@ -91,15 +99,28 @@ async function handle(request: Request) {
   );
 
   try {
-    const supabase = createAdminClient();
-    const { data: subs, error } = await supabase
-      .from('push_subscriptions')
-      .select('id, user_id, endpoint, keys');
-    if (error) throw new Error(`查询订阅失败：${error.message}`);
+    // 去 Supabase：原 admin client 绕 RLS，现直接用 db + 保留显式 user_id 过滤。
+    const db = getDb();
+    type SubRow = {
+      id: string;
+      user_id: string;
+      endpoint: string;
+      keys: { p256dh: string; auth: string };
+    };
+    const subs: SubRow[] = (
+      await db
+        .select({
+          id: pushSubscriptions.id,
+          user_id: pushSubscriptions.userId,
+          endpoint: pushSubscriptions.endpoint,
+          keys: pushSubscriptions.keys,
+        })
+        .from(pushSubscriptions)
+    ).map((s) => ({ ...s, keys: s.keys as { p256dh: string; auth: string } }));
 
     // 按用户分组
-    const byUser = new Map<string, typeof subs>();
-    for (const sub of subs ?? []) {
+    const byUser = new Map<string, SubRow[]>();
+    for (const sub of subs) {
       const list = byUser.get(sub.user_id) ?? [];
       list.push(sub);
       byUser.set(sub.user_id, list);
@@ -117,50 +138,58 @@ async function handle(request: Request) {
     for (const [userId, userSubs] of Array.from(byUser.entries())) {
       // 每用户提醒小时过滤：仅推送给 reminderHour == 当前北京小时的用户
       // （未设置 / 非法值缺省 8 点，行为与历史一致）
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('settings')
-        .eq('id', userId)
-        .maybeSingle();
-      if (profileErr) {
-        errors.push(`user=${userId} 读取设置失败：${profileErr.message}`);
+      let profileSettings: unknown;
+      try {
+        const profileRows = await db
+          .select({ settings: profiles.settings })
+          .from(profiles)
+          .where(eq(profiles.id, userId))
+          .limit(1);
+        profileSettings = profileRows[0]?.settings;
+      } catch (err) {
+        errors.push(`user=${userId} 读取设置失败：${err instanceof Error ? err.message : err}`);
         continue;
       }
-      if (resolveReminderHour(profile?.settings) !== currentHour) {
+      if (resolveReminderHour(profileSettings) !== currentHour) {
         usersSkippedHour += 1;
         continue;
       }
 
-      // admin client 绕过 RLS，必须显式按 concepts.user_id 过滤
-      const { count, error: countErr } = await supabase
-        .from('cards')
-        .select('id, concepts!inner(user_id)', { count: 'exact', head: true })
-        .eq('concepts.user_id', userId)
-        .eq('status', 'active')
-        .lte('fsrs_state->>due', nowIso);
-      if (countErr) {
-        errors.push(`user=${userId} 到期统计失败：${countErr.message}`);
+      // 显式按 concepts.user_id 过滤；到期条件：active 且 fsrs_state->>'due' <= now。
+      let due = 0;
+      try {
+        const countRows = await db
+          .select({ n: sql<number>`count(*)::int` })
+          .from(cards)
+          .innerJoin(concepts, eq(concepts.id, cards.conceptId))
+          .where(
+            and(
+              eq(concepts.userId, userId),
+              eq(cards.status, 'active'),
+              sql`${cards.fsrsState}->>'due' <= ${nowIso}`
+            )
+          );
+        due = countRows[0]?.n ?? 0;
+      } catch (err) {
+        errors.push(`user=${userId} 到期统计失败：${err instanceof Error ? err.message : err}`);
         continue;
       }
-      const due = count ?? 0;
       if (due <= 0) continue;
 
       usersNotified += 1;
 
       // 附最近一条 daily 简报的一行摘要（F2.6）；读取失败/无简报均优雅省略
       let snippet: string | null = null;
-      const { data: digest, error: digestErr } = await supabase
-        .from('digests')
-        .select('content_md')
-        .eq('user_id', userId)
-        .eq('type', 'daily')
-        .order('period', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (digestErr) {
-        errors.push(`user=${userId} 读取简报失败：${digestErr.message}`);
-      } else {
-        snippet = digestSnippet(digest?.content_md as string | null | undefined);
+      try {
+        const digestRows = await db
+          .select({ content_md: digests.contentMd })
+          .from(digests)
+          .where(and(eq(digests.userId, userId), eq(digests.type, 'daily')))
+          .orderBy(desc(digests.period))
+          .limit(1);
+        snippet = digestSnippet(digestRows[0]?.content_md);
+      } catch (err) {
+        errors.push(`user=${userId} 读取简报失败：${err instanceof Error ? err.message : err}`);
       }
 
       const reviewLine = `今天有 ${due} 张卡片待复习，预计 ${estimateMinutes(due)} 分钟`;
@@ -170,13 +199,10 @@ async function handle(request: Request) {
         url: '/review',
       });
 
-      for (const sub of userSubs ?? []) {
+      for (const sub of userSubs) {
         try {
           await webpush.sendNotification(
-            {
-              endpoint: sub.endpoint,
-              keys: sub.keys as { p256dh: string; auth: string },
-            },
+            { endpoint: sub.endpoint, keys: sub.keys },
             payload
           );
           sent += 1;
@@ -184,7 +210,7 @@ async function handle(request: Request) {
           const statusCode = (err as { statusCode?: number }).statusCode;
           if (statusCode === 404 || statusCode === 410) {
             // 订阅已失效，清理
-            await supabase.from('push_subscriptions').delete().eq('id', sub.id);
+            await db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, sub.id));
             removed += 1;
           } else {
             const msg = err instanceof Error ? err.message : String(err);
@@ -197,7 +223,7 @@ async function handle(request: Request) {
     return NextResponse.json({
       ok: true,
       currentHour,
-      subscriptions: subs?.length ?? 0,
+      subscriptions: subs.length,
       usersNotified,
       usersSkippedHour,
       sent,

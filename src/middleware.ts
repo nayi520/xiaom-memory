@@ -1,58 +1,46 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { NextResponse, type NextRequest } from 'next/server';
+/**
+ * 中间件 —— 去 Supabase 改造（Auth.js 会话）
+ *
+ * 用 Auth.js v5 的 `auth` 包裹中间件：req.auth 即当前 session（JWT 模式下读 cookie + 验签）。
+ * 取代原 Supabase 的会话刷新（createServerClient + getUser）。
+ *
+ * 放行逻辑沿用 PUBLIC_PATHS；额外放行 /api/auth（Auth.js 自身的 signin/callback/session 等端点，
+ * 否则未登录态下登录流程会被重定向到 /login 形成死循环）。
+ */
 
-type CookieToSet = { name: string; value: string; options: CookieOptions };
+import { NextResponse } from 'next/server';
+// Edge 安全实例（不含 adapter/providers，避免 postgres.js / node:crypto 进 Edge 包）。
+import { auth } from '@/lib/auth/edge';
 
-const SUPABASE_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'https://placeholder.supabase.co';
-const SUPABASE_ANON_KEY =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? 'placeholder-anon-key';
+/** 无需登录即可访问的路径前缀：
+ *  - /login：登录页
+ *  - /auth：历史路径占位（旧 Supabase 回调已删，保留前缀避免误拦截）
+ *  - /api/auth：Auth.js 端点（magic link 回调 / session / csrf / signout 等）
+ *  - /api/cron：用 Bearer CRON_SECRET 自行鉴权
+ */
+const PUBLIC_PATHS = ['/login', '/auth', '/api/auth', '/api/cron'];
 
-/** 无需登录即可访问的路径前缀（/api/cron 用 Bearer CRON_SECRET 自行鉴权） */
-const PUBLIC_PATHS = ['/login', '/auth', '/api/cron'];
-
-export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
-
-  const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet: CookieToSet[]) {
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value)
-        );
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
-
-  // 重要：刷新会话，勿在 createServerClient 与 getUser 之间插入逻辑
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  const { pathname } = request.nextUrl;
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isLoggedIn = Boolean(req.auth?.user?.id);
 
-  if (!user && !isPublic) {
-    const url = request.nextUrl.clone();
+  // 未登录访问受保护页 → 跳登录
+  if (!isLoggedIn && !isPublic) {
+    const url = req.nextUrl.clone();
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }
 
-  if (user && pathname === '/login') {
-    const url = request.nextUrl.clone();
+  // 已登录还停在登录页 → 跳首页
+  if (isLoggedIn && pathname === '/login') {
+    const url = req.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
-  return response;
-}
+  return NextResponse.next();
+});
 
 export const config = {
   matcher: [

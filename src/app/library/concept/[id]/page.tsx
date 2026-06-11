@@ -7,7 +7,18 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
+import { getDb } from '@/lib/db/client';
+import {
+  cards as cardsTable,
+  concepts as conceptsTable,
+  conceptLinks,
+  noteConcepts,
+  notes as notesTable,
+  noteTags,
+  tags as tagsTable,
+} from '@/lib/db/schema';
 import { excerpt } from '@/features/library/search';
 import ConceptEditor from '@/features/library/components/ConceptEditor';
 
@@ -43,66 +54,82 @@ export default async function ConceptDetailPage({
 }: {
   params: { id: string };
 }) {
-  const supabase = createClient();
+  const user = await getCurrentUser();
+  if (!user) notFound();
+  const db = getDb();
 
-  const { data: concept } = await supabase
-    .from('concepts')
-    .select('id, name, summary, domain, topic, created_at')
-    .eq('id', params.id)
-    .maybeSingle();
+  // 概念本体：显式按 user_id 过滤（原靠 RLS），他人概念视为不存在。
+  const conceptRows = await db
+    .select({
+      id: conceptsTable.id,
+      name: conceptsTable.name,
+      summary: conceptsTable.summary,
+      domain: conceptsTable.domain,
+      topic: conceptsTable.topic,
+    })
+    .from(conceptsTable)
+    .where(and(eq(conceptsTable.id, params.id), eq(conceptsTable.userId, user.id)))
+    .limit(1);
+  const concept = conceptRows[0];
   if (!concept) notFound();
 
   // 关联记录、卡片、概念链接并行取
-  const [{ data: ncRows }, { data: cards }, { data: linkRows }] = await Promise.all([
-    supabase
-      .from('note_concepts')
-      .select(
-        'note:notes!inner(id, type, raw_content, transcript, url, summary, why_important, created_at)'
-      )
-      .eq('concept_id', concept.id)
-      .is('note.deleted_at', null),
-    supabase
-      .from('cards')
-      .select('id, question, status, fsrs_state')
-      .eq('concept_id', concept.id)
-      .order('created_at', { ascending: true }),
-    supabase
-      .from('concept_links')
-      .select('concept_a, concept_b, relation_type, reason')
-      .or(`concept_a.eq.${concept.id},concept_b.eq.${concept.id}`),
+  const [ncRows, cards, linkRows] = await Promise.all([
+    db
+      .select({
+        id: notesTable.id,
+        type: notesTable.type,
+        raw_content: notesTable.rawContent,
+        transcript: notesTable.transcript,
+        url: notesTable.url,
+        summary: notesTable.summary,
+        why_important: notesTable.whyImportant,
+        created_at: notesTable.createdAt,
+      })
+      .from(noteConcepts)
+      .innerJoin(notesTable, eq(notesTable.id, noteConcepts.noteId))
+      .where(and(eq(noteConcepts.conceptId, concept.id), isNull(notesTable.deletedAt))),
+    db
+      .select({
+        id: cardsTable.id,
+        question: cardsTable.question,
+        status: cardsTable.status,
+        fsrs_state: cardsTable.fsrsState,
+      })
+      .from(cardsTable)
+      .where(eq(cardsTable.conceptId, concept.id))
+      .orderBy(asc(cardsTable.createdAt)),
+    db
+      .select({
+        concept_a: conceptLinks.conceptA,
+        concept_b: conceptLinks.conceptB,
+        relation_type: conceptLinks.relationType,
+        reason: conceptLinks.reason,
+      })
+      .from(conceptLinks)
+      .where(or(eq(conceptLinks.conceptA, concept.id), eq(conceptLinks.conceptB, concept.id))),
   ]);
 
-  const notes = ((ncRows ?? []) as unknown as { note: NoteRow | null }[])
-    .map((r) => r.note)
-    .filter((n): n is NoteRow => n !== null)
+  const notes: NoteRow[] = ncRows
+    .map((r) => ({
+      ...r,
+      created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+    }))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
   // 标签来自关联记录（tags 挂在 notes 上，记录详情页可修改）
   let tagNames: string[] = [];
   if (notes.length > 0) {
-    const { data: tagRows } = await supabase
-      .from('note_tags')
-      .select('tag:tags(name)')
-      .in(
-        'note_id',
-        notes.map((n) => n.id)
-      );
-    tagNames = Array.from(
-      new Set(
-        ((tagRows ?? []) as unknown as { tag: { name: string } | null }[])
-          .map((r) => r.tag?.name)
-          .filter((n): n is string => Boolean(n))
-      )
-    );
+    const tagRows = await db
+      .select({ name: tagsTable.name })
+      .from(noteTags)
+      .innerJoin(tagsTable, eq(tagsTable.id, noteTags.tagId))
+      .where(inArray(noteTags.noteId, notes.map((n) => n.id)));
+    tagNames = Array.from(new Set(tagRows.map((r) => r.name).filter(Boolean)));
   }
 
-  // 关联概念：取对端概念名（双向）
-  const links = (linkRows ?? []) as {
-    concept_a: string;
-    concept_b: string;
-    relation_type: string | null;
-    reason: string | null;
-  }[];
+  // 关联概念：取对端概念名（双向）。对端同样限定本人概念。
+  const links = linkRows;
   const otherIds = Array.from(
     new Set(
       links.map((l) => (l.concept_a === concept.id ? l.concept_b : l.concept_a))
@@ -110,11 +137,11 @@ export default async function ConceptDetailPage({
   );
   const otherNames = new Map<string, string>();
   if (otherIds.length > 0) {
-    const { data: others } = await supabase
-      .from('concepts')
-      .select('id, name')
-      .in('id', otherIds);
-    for (const o of others ?? []) otherNames.set(o.id as string, o.name as string);
+    const others = await db
+      .select({ id: conceptsTable.id, name: conceptsTable.name })
+      .from(conceptsTable)
+      .where(and(inArray(conceptsTable.id, otherIds), eq(conceptsTable.userId, user.id)));
+    for (const o of others) otherNames.set(o.id, o.name);
   }
 
   return (

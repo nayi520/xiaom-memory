@@ -88,17 +88,23 @@ export default function VoiceCapture({
     setWhy('');
     setState('idle');
 
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
+    // 取当前用户 id（构造 Storage 路径用）。去 Supabase：改请求 /api/me。
+    let userId: string;
+    try {
+      const meRes = await fetch('/api/me');
+      if (!meRes.ok) {
+        failNote(temp.id, '未登录');
+        return;
+      }
+      ({ id: userId } = (await meRes.json()) as { id: string });
+    } catch {
       failNote(temp.id, '未登录');
       return;
     }
 
-    // 1. 上传音频到 Storage bucket `audio`
-    const path = `${user.id}/${crypto.randomUUID()}.webm`;
+    // 1. 上传音频到 Storage bucket `audio`（暂留 supabase.storage，待 OSS 阶段切换）
+    const supabase = createClient();
+    const path = `${userId}/${crypto.randomUUID()}.webm`;
     const { error: uploadError } = await supabase.storage
       .from('audio')
       .upload(path, blob, { contentType: 'audio/webm' });
@@ -107,42 +113,49 @@ export default function VoiceCapture({
       return;
     }
 
-    // 2. 先建 note（不等转写）
-    const { data: note, error: insertError } = await supabase
-      .from('notes')
-      .insert({
-        type: 'voice',
-        media_path: path,
-        why_important: whyText,
-        status: 'inbox',
-      })
-      .select()
-      .single();
-    if (insertError || !note) {
-      failNote(temp.id, '保存失败');
+    // 2. 先建 note（不等转写）—— 改走 /api/notes（Drizzle 落库）
+    let note: Note;
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'voice',
+          media_path: path,
+          why_important: whyText,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.note) {
+        failNote(temp.id, data.error || '保存失败');
+        return;
+      }
+      note = data.note as Note;
+    } catch {
+      failNote(temp.id, '网络错误，保存失败');
       return;
     }
-    confirmNote(temp.id, note as Note, '转写中…');
+    confirmNote(temp.id, note, '转写中…');
 
     // 3. 异步转写，不阻塞
     try {
       const res = await fetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ noteId: (note as Note).id }),
+        body: JSON.stringify({ noteId: note.id }),
       });
       const result = await res.json();
       if (result.transcribed) {
-        updateNote((note as Note).id, {
+        updateNote(note.id, {
           transcript: result.transcript,
           raw_content: result.transcript,
           hint: undefined,
         });
       } else {
-        updateNote((note as Note).id, { hint: result.message || '转写待配置' });
+        updateNote(note.id, { hint: result.message || '转写待配置' });
       }
     } catch {
-      updateNote((note as Note).id, { hint: '转写失败，音频已保存' });
+      updateNote(note.id, { hint: '转写失败，音频已保存' });
     }
   }
 

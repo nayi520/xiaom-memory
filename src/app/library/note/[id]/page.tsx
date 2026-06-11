@@ -5,7 +5,16 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { and, eq, isNull } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
+import { getDb } from '@/lib/db/client';
+import {
+  concepts as conceptsTable,
+  noteConcepts,
+  notes as notesTable,
+  noteTags,
+  tags as tagsTable,
+} from '@/lib/db/schema';
 import NoteAudio from '@/features/library/components/NoteAudio';
 import NoteTagEditor from '@/features/library/components/NoteTagEditor';
 import NoteDeleteButton from '@/features/capture/components/NoteDeleteButton';
@@ -32,35 +41,52 @@ export default async function NoteDetailPage({
 }: {
   params: { id: string };
 }) {
-  const supabase = createClient();
+  const user = await getCurrentUser();
+  if (!user) notFound();
+  const db = getDb();
 
-  // 已软删（移入回收站）的记录视为不存在；恢复后可再访问
-  const { data: note } = await supabase
-    .from('notes')
-    .select(
-      'id, type, raw_content, transcript, url, media_path, why_important, summary, status, created_at'
+  // 已软删（移入回收站）的记录视为不存在；恢复后可再访问。
+  // 授权改应用层：显式按 user_id 过滤（原靠 RLS），他人记录视为不存在。
+  const noteRows = await db
+    .select({
+      id: notesTable.id,
+      type: notesTable.type,
+      raw_content: notesTable.rawContent,
+      transcript: notesTable.transcript,
+      url: notesTable.url,
+      media_path: notesTable.mediaPath,
+      why_important: notesTable.whyImportant,
+      summary: notesTable.summary,
+      status: notesTable.status,
+      created_at: notesTable.createdAt,
+    })
+    .from(notesTable)
+    .where(
+      and(
+        eq(notesTable.id, params.id),
+        eq(notesTable.userId, user.id),
+        isNull(notesTable.deletedAt)
+      )
     )
-    .eq('id', params.id)
-    .is('deleted_at', null)
-    .maybeSingle();
+    .limit(1);
+  const note = noteRows[0];
   if (!note) notFound();
 
-  const [{ data: tagRows }, { data: conceptRows }] = await Promise.all([
-    supabase.from('note_tags').select('tag:tags(name)').eq('note_id', note.id),
-    supabase
-      .from('note_concepts')
-      .select('concept:concepts(id, name)')
-      .eq('note_id', note.id),
+  const [tagRows, conceptRows] = await Promise.all([
+    db
+      .select({ name: tagsTable.name })
+      .from(noteTags)
+      .innerJoin(tagsTable, eq(tagsTable.id, noteTags.tagId))
+      .where(eq(noteTags.noteId, note.id)),
+    db
+      .select({ id: conceptsTable.id, name: conceptsTable.name })
+      .from(noteConcepts)
+      .innerJoin(conceptsTable, eq(conceptsTable.id, noteConcepts.conceptId))
+      .where(eq(noteConcepts.noteId, note.id)),
   ]);
 
-  const tags = ((tagRows ?? []) as unknown as { tag: { name: string } | null }[])
-    .map((r) => r.tag?.name)
-    .filter((n): n is string => Boolean(n));
-  const concepts = (
-    (conceptRows ?? []) as unknown as { concept: { id: string; name: string } | null }[]
-  )
-    .map((r) => r.concept)
-    .filter((c): c is { id: string; name: string } => c !== null);
+  const tags = tagRows.map((r) => r.name).filter(Boolean);
+  const concepts = conceptRows;
 
   const text = note.raw_content || note.transcript || '';
 

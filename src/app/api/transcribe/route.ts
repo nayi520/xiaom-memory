@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+import { and, eq } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
+import { getDb } from '@/lib/db/client';
+import { notes } from '@/lib/db/schema';
 import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
@@ -8,12 +12,12 @@ export const maxDuration = 60;
  * POST /api/transcribe  { noteId }
  * 下载 note 对应音频 → OpenAI Whisper 转写 → 更新 transcript
  * 未配置 OPENAI_API_KEY 时优雅降级（音频已保存，转写待配置）
+ *
+ * 去 Supabase 改造（Phase B）：notes 读/写改 Drizzle、鉴权改 getCurrentUser；
+ * 音频下载暂留 supabase.storage（待 OSS 阶段切换）。
  */
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
@@ -28,12 +32,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '缺少 noteId' }, { status: 400 });
   }
 
-  const { data: note, error: noteError } = await supabase
-    .from('notes')
-    .select('*')
-    .eq('id', noteId)
-    .single();
-  if (noteError || !note || note.type !== 'voice' || !note.media_path) {
+  const db = getDb();
+  // 显式按 user_id 过滤（原靠 RLS）。
+  const noteRows = await db
+    .select({ id: notes.id, type: notes.type, media_path: notes.mediaPath })
+    .from(notes)
+    .where(and(eq(notes.id, noteId), eq(notes.userId, user.id)))
+    .limit(1);
+  const note = noteRows[0];
+  if (!note || note.type !== 'voice' || !note.media_path) {
     return NextResponse.json({ error: '记录不存在或非语音' }, { status: 404 });
   }
 
@@ -46,7 +53,8 @@ export async function POST(request: Request) {
     });
   }
 
-  // 从 Storage 下载音频（RLS 保证只能取到自己的）
+  // 从 Storage 下载音频（暂留 supabase.storage，待 OSS 阶段切换）
+  const supabase = createClient();
   const { data: audio, error: downloadError } = await supabase.storage
     .from('audio')
     .download(note.media_path);
@@ -76,11 +84,12 @@ export async function POST(request: Request) {
 
     const { text } = (await res.json()) as { text: string };
 
-    const { error: updateError } = await supabase
-      .from('notes')
-      .update({ transcript: text, raw_content: text })
-      .eq('id', noteId);
-    if (updateError) {
+    try {
+      await db
+        .update(notes)
+        .set({ transcript: text, rawContent: text })
+        .where(and(eq(notes.id, noteId), eq(notes.userId, user.id)));
+    } catch {
       return NextResponse.json({ error: '转写结果保存失败' }, { status: 500 });
     }
 

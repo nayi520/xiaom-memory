@@ -9,7 +9,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 
 const TABS = [
   { href: '/', label: '记录', icon: '✏️' },
@@ -25,15 +24,18 @@ export default function BottomNav() {
 
   useEffect(() => {
     if (hidden) return;
-    const supabase = createClient();
-    supabase
-      .from('cards')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'active')
-      .lte('fsrs_state->>due', new Date().toISOString())
-      .then(({ count }) => {
-        if (typeof count === 'number') setDue(count);
+    let cancelled = false;
+    fetch('/api/review/due')
+      .then((res) => (res.ok ? res.json() : { due: 0 }))
+      .then((data: { due?: number }) => {
+        if (!cancelled && typeof data.due === 'number') setDue(data.due);
+      })
+      .catch(() => {
+        /* 网络错误：badge 维持 0，不打扰 */
       });
+    return () => {
+      cancelled = true;
+    };
   }, [hidden, pathname]);
 
   if (hidden) return null;

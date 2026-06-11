@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/auth';
+import { getDb } from '@/lib/db/client';
+import { notes } from '@/lib/db/schema';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -13,10 +15,7 @@ const FETCH_TIMEOUT_MS = 12000;
  * 抓取失败时仍保存 URL（降级），不丢记录
  */
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
@@ -76,19 +75,36 @@ export async function POST(request: Request) {
     warning = '抓取超时或被拒绝，已保存链接';
   }
 
-  const { data: note, error: insertError } = await supabase
-    .from('notes')
-    .insert({
-      type: 'link',
-      url,
-      raw_content: rawContent,
-      why_important: whyImportant,
-      status: 'inbox',
-    })
-    .select()
-    .single();
-
-  if (insertError || !note) {
+  let note;
+  try {
+    const [row] = await getDb()
+      .insert(notes)
+      .values({
+        userId: user.id,
+        type: 'link',
+        url,
+        rawContent,
+        whyImportant,
+        status: 'inbox',
+      })
+      .returning();
+    // 返回 snake_case Note 形态（前端乐观 UI 契约）
+    note = {
+      id: row.id,
+      user_id: row.userId,
+      type: row.type,
+      raw_content: row.rawContent,
+      transcript: row.transcript,
+      url: row.url,
+      media_path: row.mediaPath,
+      why_important: row.whyImportant,
+      status: row.status,
+      summary: row.summary,
+      created_at:
+        row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+    };
+  } catch (err) {
+    console.error('[clip] 保存失败：', err);
     return NextResponse.json({ error: '保存失败' }, { status: 500 });
   }
 

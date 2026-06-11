@@ -151,4 +151,10 @@ CREATE INDEX "push_subscriptions_user_idx" ON "push_subscriptions" USING btree (
 CREATE INDEX "reviews_card_idx" ON "reviews" USING btree ("card_id","reviewed_at" DESC NULLS LAST);--> statement-breakpoint
 CREATE UNIQUE INDEX "tags_user_id_name_key" ON "tags" USING btree ("user_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "users_email_key" ON "users" USING btree ("email");--> statement-breakpoint
-CREATE UNIQUE INDEX "users_apple_sub_key" ON "users" USING btree ("apple_sub");
+CREATE UNIQUE INDEX "users_apple_sub_key" ON "users" USING btree ("apple_sub");--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "verification_tokens" (
+	"identifier" text NOT NULL,
+	"token" text NOT NULL,
+	"expires" timestamp with time zone NOT NULL,
+	CONSTRAINT "verification_tokens_identifier_token_pk" PRIMARY KEY("identifier","token")
+);

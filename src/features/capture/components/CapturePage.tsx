@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Note } from '@/lib/types';
 import type { CaptureTab, RecentItem } from '../types';
 import TextCapture from './TextCapture';
@@ -21,16 +20,18 @@ export default function CapturePage() {
 
   // 加载最近 3 条
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from('notes')
-      .select('*')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(3)
-      .then(({ data }) => {
-        if (data) setRecent(data as RecentItem[]);
+    let cancelled = false;
+    fetch('/api/notes?limit=3')
+      .then((res) => (res.ok ? res.json() : { notes: [] }))
+      .then((data: { notes?: Note[] }) => {
+        if (!cancelled && data.notes) setRecent(data.notes as RecentItem[]);
+      })
+      .catch(() => {
+        /* 网络错误：最近列表留空 */
       });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /** 乐观插入一条（提交瞬间调用） */

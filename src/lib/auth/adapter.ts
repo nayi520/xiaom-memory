@@ -30,7 +30,7 @@ import type {
 import { and, eq } from 'drizzle-orm';
 import { pgTable, text, timestamp, primaryKey } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
-import { users } from '@/lib/db/schema';
+import { profiles, users } from '@/lib/db/schema';
 
 /**
  * magic link 一次性验证令牌表（Auth.js Email provider 用）。
@@ -78,6 +78,13 @@ export function DrizzleMinimalAdapter(): Adapter {
         .insert(users)
         .values({ email: user.email })
         .returning();
+      // 同步建一行默认 profile（settings 默认 '{}'）。
+      // 旧 Supabase 由 auth.users 触发器建 profile；自建鉴权改在此显式 upsert，
+      // 保证每个用户都有一行 profile（settings 读取处即可安全取默认值）。
+      await db
+        .insert(profiles)
+        .values({ id: row.id, email: row.email })
+        .onConflictDoNothing();
       return toAdapterUser(row);
     },
 

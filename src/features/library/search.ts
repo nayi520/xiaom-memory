@@ -1,19 +1,21 @@
 /**
- * 知识库搜索（F4.2）
+ * 知识库搜索（F4.2）—— 去 Supabase 改造（Drizzle 数据访问）
  *
  * 单一搜索框，三路并行：
  * 1. 关键词：ILIKE 多字段匹配（notes.raw_content/summary/why_important、
- *    concepts.name/summary）。本地 Supabase 无 pg_jieba/zhparser 中文分词，
- *    MVP 用此退化方案，0004 migration 已加 pg_trgm 索引提速。
+ *    concepts.name/summary）。无中文分词，MVP 用此退化方案，pg_trgm 索引提速。
  * 2. 标签：tags.name 精确匹配 → 关联 notes。
- * 3. 语义：query 算 embedding → match_concepts RPC（pgvector cosine）。
- *    未配置 OPENAI_API_KEY 时优雅降级，只跑关键词与标签。
+ * 3. 语义：query 算 embedding → 对 concepts.embedding 的 pgvector cosine 查询。
+ *    未配置 DASHSCOPE_API_KEY 时优雅降级，只跑关键词与标签。
  *
+ * 授权改应用层：concepts/notes/tags 各路均显式按 user_id 过滤（原靠 RLS）。
  * 结果合并去重（mergeHits 为纯函数，scripts/test-search.ts 覆盖），
  * 每条标注命中来源（关键词 / 标签 / 语义）。
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
+import { and, eq, ilike, isNull, sql } from 'drizzle-orm';
+import type { Database } from '@/lib/db/client';
+import { concepts, noteTags, notes, tags } from '@/lib/db/schema';
 import { embed, EmbeddingKeyMissingError } from '@/lib/embeddings';
 
 // ============ 类型 ============
@@ -150,12 +152,32 @@ export const KEYWORD_LIMIT = 20;
 
 // ============ 服务端执行 ============
 
-const CONCEPT_COLS = 'id, name, summary, created_at';
-const NOTE_COLS =
-  'id, raw_content, transcript, summary, why_important, url, created_at';
+/** concepts 查询投影（→ ConceptRow，created_at 由 Date 折算 ISO） */
+const conceptCols = {
+  id: concepts.id,
+  name: concepts.name,
+  summary: concepts.summary,
+  created_at: concepts.createdAt,
+};
+
+/** notes 查询投影（→ NoteRow） */
+const noteCols = {
+  id: notes.id,
+  raw_content: notes.rawContent,
+  transcript: notes.transcript,
+  summary: notes.summary,
+  why_important: notes.whyImportant,
+  url: notes.url,
+  created_at: notes.createdAt,
+};
+
+/** Date → ISO 字符串（投影出来的 created_at 是 Date，RawHit/排序需要字符串） */
+function iso(v: Date | string): string {
+  return v instanceof Date ? v.toISOString() : String(v);
+}
 
 export async function runLibrarySearch(
-  supabase: SupabaseClient,
+  db: Database,
   userId: string,
   q: string
 ): Promise<LibrarySearchResult> {
@@ -164,60 +186,63 @@ export async function runLibrarySearch(
   const pattern = `%${escapeIlike(query)}%`;
 
   // ---- 关键词（ILIKE 多字段） + 标签精确匹配，并行 ----
-  // notes 各路均排除软删记录（deleted_at is null），回收站内容不进搜索结果
+  // concepts/notes/tags 均显式按 user_id 过滤（原靠 RLS）；
+  // notes 各路排除软删记录（deleted_at is null），回收站内容不进搜索结果。
   const [cName, cSummary, nRaw, nSummary, nWhy, tagRes] = await Promise.all([
-    supabase.from('concepts').select(CONCEPT_COLS).ilike('name', pattern).limit(KEYWORD_LIMIT),
-    supabase.from('concepts').select(CONCEPT_COLS).ilike('summary', pattern).limit(KEYWORD_LIMIT),
-    supabase.from('notes').select(NOTE_COLS).is('deleted_at', null).ilike('raw_content', pattern).limit(KEYWORD_LIMIT),
-    supabase.from('notes').select(NOTE_COLS).is('deleted_at', null).ilike('summary', pattern).limit(KEYWORD_LIMIT),
-    supabase.from('notes').select(NOTE_COLS).is('deleted_at', null).ilike('why_important', pattern).limit(KEYWORD_LIMIT),
-    supabase.from('tags').select('id').eq('name', query).maybeSingle(),
+    db.select(conceptCols).from(concepts)
+      .where(and(eq(concepts.userId, userId), ilike(concepts.name, pattern)))
+      .limit(KEYWORD_LIMIT),
+    db.select(conceptCols).from(concepts)
+      .where(and(eq(concepts.userId, userId), ilike(concepts.summary, pattern)))
+      .limit(KEYWORD_LIMIT),
+    db.select(noteCols).from(notes)
+      .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.rawContent, pattern)))
+      .limit(KEYWORD_LIMIT),
+    db.select(noteCols).from(notes)
+      .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.summary, pattern)))
+      .limit(KEYWORD_LIMIT),
+    db.select(noteCols).from(notes)
+      .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.whyImportant, pattern)))
+      .limit(KEYWORD_LIMIT),
+    db.select({ id: tags.id }).from(tags)
+      .where(and(eq(tags.userId, userId), eq(tags.name, query)))
+      .limit(1),
   ]);
 
+  const toConcept = (r: { id: string; name: string; summary: string | null; created_at: Date | string }) =>
+    conceptToHit({ id: r.id, name: r.name, summary: r.summary, created_at: iso(r.created_at) });
+  const toNote = (r: {
+    id: string; raw_content: string | null; transcript: string | null;
+    summary: string | null; why_important: string | null; url: string | null; created_at: Date | string;
+  }) => noteToHit({ ...r, created_at: iso(r.created_at) });
+
   const keywordHits: RawHit[] = [
-    ...((cName.data ?? []) as ConceptRow[]).map((r) => conceptToHit(r)),
-    ...((cSummary.data ?? []) as ConceptRow[]).map((r) => conceptToHit(r)),
-    ...((nRaw.data ?? []) as NoteRow[]).map(noteToHit),
-    ...((nSummary.data ?? []) as NoteRow[]).map(noteToHit),
-    ...((nWhy.data ?? []) as NoteRow[]).map(noteToHit),
+    ...cName.map(toConcept),
+    ...cSummary.map(toConcept),
+    ...nRaw.map(toNote),
+    ...nSummary.map(toNote),
+    ...nWhy.map(toNote),
   ];
 
-  // ---- 标签命中的记录（!inner + deleted_at is null：排除软删记录） ----
+  // ---- 标签命中的记录（join notes + deleted_at is null：排除软删记录） ----
   let tagHits: RawHit[] = [];
-  if (tagRes.data?.id) {
-    const { data } = await supabase
-      .from('note_tags')
-      .select(`note:notes!inner(${NOTE_COLS})`)
-      .eq('tag_id', tagRes.data.id)
-      .is('note.deleted_at', null);
-    tagHits = ((data ?? []) as unknown as { note: NoteRow | null }[])
-      .map((r) => r.note)
-      .filter((n): n is NoteRow => n !== null)
-      .map(noteToHit);
+  const tagId = tagRes[0]?.id;
+  if (tagId) {
+    const rows = await db
+      .select(noteCols)
+      .from(noteTags)
+      .innerJoin(notes, eq(notes.id, noteTags.noteId))
+      .where(and(eq(noteTags.tagId, tagId), eq(notes.userId, userId), isNull(notes.deletedAt)));
+    tagHits = rows.map(toNote);
   }
 
-  // ---- 语义（无 OPENAI_API_KEY 时优雅降级） ----
+  // ---- 语义（无 DASHSCOPE_API_KEY 时优雅降级） ----
   let semanticHits: RawHit[] = [];
   let semanticUsed = false;
   try {
     const vector = await embed(query);
-    const { data, error } = await supabase.rpc('match_concepts', {
-      p_user_id: userId,
-      p_embedding: JSON.stringify(vector),
-      p_threshold: SEMANTIC_THRESHOLD,
-      p_limit: SEMANTIC_LIMIT,
-      p_exclude: [],
-    });
-    if (error) throw new Error(`match_concepts 失败：${error.message}`);
+    semanticHits = await semanticSearch(db, userId, vector);
     semanticUsed = true;
-    semanticHits = (
-      (data ?? []) as { id: string; name: string; summary: string | null; created_at: string; similarity: number }[]
-    ).map((r) =>
-      conceptToHit(
-        { id: r.id, name: r.name, summary: r.summary, created_at: r.created_at },
-        r.similarity
-      )
-    );
   } catch (err) {
     if (!(err instanceof EmbeddingKeyMissingError)) {
       // 语义检索故障不阻塞关键词结果，只记日志
@@ -233,4 +258,41 @@ export async function runLibrarySearch(
     ]),
     semanticUsed,
   };
+}
+
+/** 语义命中：对 concepts.embedding 的 pgvector 余弦查询（阈值 SEMANTIC_THRESHOLD，topK = SEMANTIC_LIMIT） */
+async function semanticSearch(
+  db: Database,
+  userId: string,
+  vector: number[]
+): Promise<RawHit[]> {
+  const vec = `[${vector.join(',')}]`;
+  type Row = {
+    id: string;
+    name: string;
+    summary: string | null;
+    created_at: Date | string;
+    similarity: number | string;
+    [key: string]: unknown;
+  };
+  const rows = await db.execute<Row>(sql`
+    select
+      c.id,
+      c.name,
+      c.summary,
+      c.created_at,
+      1 - (c.embedding <=> ${vec}::vector) as similarity
+    from concepts c
+    where c.user_id = ${userId}
+      and c.embedding is not null
+      and 1 - (c.embedding <=> ${vec}::vector) > ${SEMANTIC_THRESHOLD}
+    order by c.embedding <=> ${vec}::vector asc
+    limit ${SEMANTIC_LIMIT}
+  `);
+  return (rows as unknown as Row[]).map((r) =>
+    conceptToHit(
+      { id: r.id, name: r.name, summary: r.summary, created_at: iso(r.created_at) },
+      Number(r.similarity)
+    )
+  );
 }

@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { and, eq } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
+import { getDb } from '@/lib/db/client';
+import { pushSubscriptions } from '@/lib/db/schema';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,10 +24,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
 
   let body: { subscription?: { endpoint?: unknown; keys?: unknown } };
@@ -48,13 +48,23 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error } = await supabase.from('push_subscriptions').upsert(
-    { user_id: user.id, endpoint: sub.endpoint, keys: sub.keys },
-    { onConflict: 'endpoint' }
-  );
-  if (error) {
+  // endpoint 唯一：冲突时更新 user_id / keys（换号或换密钥）。
+  try {
+    await getDb()
+      .insert(pushSubscriptions)
+      .values({
+        userId: user.id,
+        endpoint: sub.endpoint,
+        keys: sub.keys as Record<string, unknown>,
+      })
+      .onConflictDoUpdate({
+        target: pushSubscriptions.endpoint,
+        set: { userId: user.id, keys: sub.keys as Record<string, unknown> },
+      });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: `订阅保存失败：${error.message}` },
+      { error: `订阅保存失败：${msg}` },
       { status: 500 }
     );
   }
@@ -62,10 +72,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: '未登录' }, { status: 401 });
 
   let body: { endpoint?: unknown };
@@ -78,14 +85,20 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: '缺少 endpoint' }, { status: 400 });
   }
 
-  // RLS 保证只能删自己的
-  const { error } = await supabase
-    .from('push_subscriptions')
-    .delete()
-    .eq('endpoint', body.endpoint);
-  if (error) {
+  // 显式按 user_id 过滤：只能删自己的订阅（原靠 RLS）。
+  try {
+    await getDb()
+      .delete(pushSubscriptions)
+      .where(
+        and(
+          eq(pushSubscriptions.endpoint, body.endpoint),
+          eq(pushSubscriptions.userId, user.id)
+        )
+      );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: `取消订阅失败：${error.message}` },
+      { error: `取消订阅失败：${msg}` },
       { status: 500 }
     );
   }

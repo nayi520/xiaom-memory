@@ -1,7 +1,6 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
 
@@ -31,22 +30,24 @@ export default function TextCapture({
     setWhy('');
     textareaRef.current?.focus();
 
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from('notes')
-      .insert({
-        type: 'text',
-        raw_content: text,
-        why_important: temp.why_important,
-        status: 'inbox',
-      })
-      .select()
-      .single();
-
-    if (error || !data) {
-      failNote(temp.id, '保存失败，请重试');
-    } else {
-      confirmNote(temp.id, data as Note);
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'text',
+          raw_content: text,
+          why_important: temp.why_important,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.note) {
+        confirmNote(temp.id, data.note as Note);
+      } else {
+        failNote(temp.id, data.error || '保存失败，请重试');
+      }
+    } catch {
+      failNote(temp.id, '网络错误，保存失败');
     }
   }
 

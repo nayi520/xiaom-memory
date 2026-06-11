@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { and, desc, eq } from 'drizzle-orm';
+import { getCurrentUser } from '@/lib/auth';
+import { getDb } from '@/lib/db/client';
+import { cards, concepts, reviews } from '@/lib/db/schema';
 import {
   applyRating,
   shouldGraduate,
@@ -13,12 +16,12 @@ export const dynamic = 'force-dynamic';
  * POST /api/review —— 提交一次卡片自评（F3.1 / F3.3 / F3.5）
  * body: { cardId: string, rating: 1|2|3|4 }
  * 流程：写 reviews 日志 → ts-fsrs 计算新 fsrs_state → 毕业判定 → 更新 cards
+ *
+ * 去 Supabase 改造：鉴权 getCurrentUser()，授权改应用层——
+ * 卡片归属经 cards→concepts join 显式按 concepts.user_id 校验（原靠 RLS）。
  */
 export async function POST(request: Request) {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
@@ -38,57 +41,65 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  const ratingNum = rating as ReviewRating;
 
-  // RLS 保证只能取到自己的卡
-  const { data: card, error: cardErr } = await supabase
-    .from('cards')
-    .select('id, fsrs_state, status')
-    .eq('id', cardId)
-    .single();
-  if (cardErr || !card) {
+  const db = getDb();
+
+  // 卡片归属校验：经 concepts join 按 user_id 过滤，确保只能复习自己的卡。
+  const cardRows = await db
+    .select({
+      id: cards.id,
+      fsrs_state: cards.fsrsState,
+      status: cards.status,
+    })
+    .from(cards)
+    .innerJoin(concepts, eq(concepts.id, cards.conceptId))
+    .where(and(eq(cards.id, cardId), eq(concepts.userId, user.id)))
+    .limit(1);
+  const card = cardRows[0];
+  if (!card) {
     return NextResponse.json({ error: '卡片不存在' }, { status: 404 });
   }
 
   // 1) FSRS 计算新状态
-  const outcome = applyRating(
-    card.fsrs_state as FsrsStateJson,
-    rating as ReviewRating
-  );
+  const outcome = applyRating(card.fsrs_state as FsrsStateJson, ratingNum);
 
   // 2) 写复习日志
-  const { error: revErr } = await supabase
-    .from('reviews')
-    .insert({ card_id: cardId, rating });
-  if (revErr) {
+  try {
+    await db.insert(reviews).values({ cardId, rating: ratingNum });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: `复习日志写入失败：${revErr.message}` },
+      { error: `复习日志写入失败：${msg}` },
       { status: 500 }
     );
   }
 
   // 3) 毕业判定（F3.5）：间隔 >180 天 且 最近连续 3 次评分 = 4（含本次）
-  const { data: recent } = await supabase
-    .from('reviews')
-    .select('rating')
-    .eq('card_id', cardId)
-    .order('reviewed_at', { ascending: false })
+  const recent = await db
+    .select({ rating: reviews.rating })
+    .from(reviews)
+    .where(eq(reviews.cardId, cardId))
+    .orderBy(desc(reviews.reviewedAt))
     .limit(3);
-  const recentRatings = (recent ?? []).map((r) => r.rating as number);
+  const recentRatings = recent.map((r) => r.rating);
   const graduated =
     card.status === 'active' &&
     shouldGraduate(outcome.scheduledDays, recentRatings);
 
   // 4) 更新卡片
-  const { error: updErr } = await supabase
-    .from('cards')
-    .update({
-      fsrs_state: outcome.state,
-      ...(graduated ? { status: 'graduated' } : {}),
-    })
-    .eq('id', cardId);
-  if (updErr) {
+  try {
+    await db
+      .update(cards)
+      .set({
+        fsrsState: outcome.state,
+        ...(graduated ? { status: 'graduated' } : {}),
+      })
+      .where(eq(cards.id, cardId));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json(
-      { error: `卡片状态更新失败：${updErr.message}` },
+      { error: `卡片状态更新失败：${msg}` },
       { status: 500 }
     );
   }

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { getDb } from '@/lib/db/client';
 import { createAnthropicClient } from '@/lib/llm';
 import { embed } from '@/lib/embeddings';
 import { runDigestForAllUsers } from '@/features/digest/pipeline';
-import { createSupabaseDigestStore } from '@/features/digest/store';
+import { createDigestStore } from '@/features/digest/store';
 
 export const dynamic = 'force-dynamic';
 // LLM 批处理较慢，尽量给足时长（Vercel 按套餐上限截断）
@@ -23,18 +23,18 @@ async function handle(request: Request) {
     return NextResponse.json({ error: '鉴权失败' }, { status: 401 });
   }
 
-  // 无 key 降级：明确报错，不崩溃
-  if (!process.env.ANTHROPIC_API_KEY) {
+  // 无 key 降级：明确报错，不崩溃（LLM 已切通义千问，校验 DASHSCOPE_API_KEY）
+  if (!process.env.DASHSCOPE_API_KEY) {
     return NextResponse.json(
-      { error: '未配置 ANTHROPIC_API_KEY，AI 整理不可用' },
+      { error: '未配置 DASHSCOPE_API_KEY，AI 整理不可用' },
       { status: 503 }
     );
   }
 
   try {
-    const supabase = createAdminClient();
+    // cron 原用 admin client 绕 RLS；现直接用 db，store 内每条查询显式按 user_id 过滤。
     const results = await runDigestForAllUsers({
-      store: createSupabaseDigestStore(supabase),
+      store: createDigestStore(getDb()),
       llm: createAnthropicClient(),
       embed,
     });
