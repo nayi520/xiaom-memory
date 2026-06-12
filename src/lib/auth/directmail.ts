@@ -116,14 +116,17 @@ function endpointForRegion(region: string): string {
 }
 
 /**
- * 阿里云 RPC 风格 percent-encode（RFC 3986，且把 +/*~ 做特殊处理）。
- * 与签名算法配套：encodeURIComponent 后修正三处差异。
+ * 阿里云 RPC 风格 percent-encode（RFC 3986）。
+ * 关键：encodeURIComponent 不编码 ! ' ( ) *，但阿里云签名要求编码它们，
+ * 否则当参数值含这些字符（如 HTML 邮件正文里的 <!doctype> 的 ! 与 CSS 的 '）
+ * 会导致 SignatureDoesNotMatch。encodeURIComponent 已将 ~ 保留为 ~、空格输出 %20，
+ * 故只需补编码 !'()* 这一类。
  */
 function rpcEncode(value: string): string {
-  return encodeURIComponent(value)
-    .replace(/\+/g, '%20')
-    .replace(/\*/g, '%2A')
-    .replace(/%7E/g, '~');
+  return encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase()
+  );
 }
 
 /**

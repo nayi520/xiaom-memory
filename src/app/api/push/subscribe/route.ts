@@ -48,7 +48,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // endpoint 唯一：冲突时更新 user_id / keys（换号或换密钥）。
+  // endpoint 唯一：冲突时仅更新 keys（换密钥）。
+  // 防认领：setWhere 限定冲突分支只改写本就属于当前用户的同 endpoint 记录
+  // （生成 `... DO UPDATE SET ... WHERE push_subscriptions.user_id = $user`）。
+  // 若该 endpoint 已属于他人：WHERE 不命中 → 不改写其归属，原记录保持不变。
   try {
     await getDb()
       .insert(pushSubscriptions)
@@ -59,7 +62,8 @@ export async function POST(request: Request) {
       })
       .onConflictDoUpdate({
         target: pushSubscriptions.endpoint,
-        set: { userId: user.id, keys: sub.keys as Record<string, unknown> },
+        set: { keys: sub.keys as Record<string, unknown> },
+        setWhere: eq(pushSubscriptions.userId, user.id),
       });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

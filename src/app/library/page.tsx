@@ -12,6 +12,7 @@ import { getDb } from '@/lib/db/client';
 import { concepts as conceptsTable, noteConcepts, notes } from '@/lib/db/schema';
 import { runLibrarySearch } from '@/features/library/search';
 import SearchResults from '@/features/library/components/SearchResults';
+import { PageShell, EmptyState, cardClass, cn } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '知识库 · 小M' };
@@ -175,24 +176,35 @@ export default async function LibraryPage({ searchParams }: Props) {
 
 function Shell({ q, children }: { q: string; children: React.ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-24 pt-6">
+    <PageShell width="wide">
       <header className="mb-4">
-        <h1 className="text-xl font-bold text-brand">知识库</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+          知识库
+        </h1>
+        <p className="mt-1 text-sm text-zinc-400">AI 整理后的概念，按领域 › 主题 › 概念下钻</p>
       </header>
 
-      <form action="/library" method="get" className="mb-4">
-        <input
-          type="search"
-          name="q"
-          defaultValue={q}
-          placeholder="搜索概念、记录、标签…"
-          enterKeyHint="search"
-          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-base outline-none transition focus:border-brand dark:border-zinc-700 dark:bg-zinc-900"
-        />
+      <form action="/library" method="get" className="mb-5">
+        <div className="relative">
+          <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-zinc-400">
+            <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]" aria-hidden>
+              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
+              <path d="m20 20-3-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </span>
+          <input
+            type="search"
+            name="q"
+            defaultValue={q}
+            placeholder="搜索概念、记录、标签…"
+            enterKeyHint="search"
+            className="w-full rounded-field border border-zinc-200 bg-white py-3 pl-11 pr-4 text-base shadow-sm outline-none transition duration-150 ease-smooth hover:border-zinc-300 focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600"
+          />
+        </div>
       </form>
 
       <div className="flex-1">{children}</div>
-    </main>
+    </PageShell>
   );
 }
 
@@ -200,15 +212,23 @@ function Shell({ q, children }: { q: string; children: React.ReactNode }) {
 
 function Breadcrumb({ parts }: { parts: { label: string; href?: string }[] }) {
   return (
-    <nav className="mb-3 flex flex-wrap items-center gap-1 text-sm text-zinc-400">
-      <Link href="/library" className="transition active:text-zinc-600">
+    <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-sm text-zinc-400">
+      <Link
+        href="/library"
+        className="rounded-md transition hover:text-brand dark:hover:text-brand-100"
+      >
         全部领域
       </Link>
       {parts.map((p) => (
-        <span key={p.label} className="flex items-center gap-1">
-          <span>›</span>
+        <span key={p.label} className="flex items-center gap-1.5">
+          <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>
+            ›
+          </span>
           {p.href ? (
-            <Link href={p.href} className="transition active:text-zinc-600">
+            <Link
+              href={p.href}
+              className="rounded-md transition hover:text-brand dark:hover:text-brand-100"
+            >
               {p.label}
             </Link>
           ) : (
@@ -233,25 +253,43 @@ interface DrillItem {
 
 function DrillList({ items, empty }: { items: DrillItem[]; empty: string }) {
   if (items.length === 0) {
-    return <p className="mt-10 text-center text-sm text-zinc-400">{empty}</p>;
+    return (
+      <EmptyState
+        icon="📚"
+        title="这里还是空的"
+        description={empty}
+      />
+    );
   }
   return (
-    <ul className="space-y-2">
+    <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
       {items.map((item) => (
         <li key={item.key}>
           <Link
             href={item.href}
-            className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-4 transition active:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:active:bg-zinc-800"
+            className={cn(
+              cardClass({ interactive: true, padded: false }),
+              'group flex h-full items-center justify-between gap-3 px-4 py-4'
+            )}
           >
             <span className="min-w-0">
-              <span className="block truncate font-medium">{item.title}</span>
+              <span className="block truncate font-semibold text-zinc-800 dark:text-zinc-100">
+                {item.title}
+              </span>
               {item.subtitle && (
                 <span className="mt-0.5 block text-xs text-zinc-400">{item.subtitle}</span>
               )}
             </span>
             <span className="flex shrink-0 items-center gap-1.5 text-sm text-zinc-400">
-              {item.count} {item.unit}
-              <span aria-hidden>›</span>
+              <span className="tabular-nums">
+                {item.count} {item.unit}
+              </span>
+              <span
+                aria-hidden
+                className="text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+              >
+                ›
+              </span>
             </span>
           </Link>
         </li>

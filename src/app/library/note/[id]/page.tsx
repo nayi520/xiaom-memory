@@ -18,6 +18,7 @@ import {
 import NoteAudio from '@/features/library/components/NoteAudio';
 import NoteTagEditor from '@/features/library/components/NoteTagEditor';
 import NoteDeleteButton from '@/features/capture/components/NoteDeleteButton';
+import { PageShell, SectionTitle, cardClass, cn } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '记录 · 小M' };
@@ -91,12 +92,15 @@ export default async function NoteDetailPage({
   const text = note.raw_content || note.transcript || '';
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-24 pt-6">
-      <nav className="mb-3 flex items-center gap-1 text-sm text-zinc-400">
-        <Link href="/library" className="transition active:text-zinc-600">
+    <PageShell>
+      <nav className="mb-4 flex items-center gap-1.5 text-sm text-zinc-400">
+        <Link
+          href="/library"
+          className="rounded-md transition hover:text-brand dark:hover:text-brand-100"
+        >
           知识库
         </Link>
-        <span>›</span>
+        <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>›</span>
         <span className="font-medium text-zinc-600 dark:text-zinc-300">原始记录</span>
         <span className="ml-auto">
           <NoteDeleteButton noteId={note.id} redirectTo="/library" />
@@ -104,9 +108,11 @@ export default async function NoteDetailPage({
       </nav>
 
       {/* 原文 / 链接 / 音频 */}
-      <section className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-        <p className="mb-2 flex flex-wrap gap-x-3 text-xs text-zinc-400">
-          <span>{NOTE_TYPE_LABELS[note.type] ?? note.type}</span>
+      <section className="rounded-card border border-zinc-200/80 bg-white p-6 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+        <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+          <span className="font-medium text-zinc-500 dark:text-zinc-400">
+            {NOTE_TYPE_LABELS[note.type] ?? note.type}
+          </span>
           <span>{new Date(note.created_at).toLocaleString('zh-CN')}</span>
           <span>{STATUS_LABELS[note.status] ?? note.status}</span>
         </p>
@@ -122,17 +128,17 @@ export default async function NoteDetailPage({
             href={note.url}
             target="_blank"
             rel="noreferrer"
-            className="mt-3 block truncate text-sm text-brand underline underline-offset-2"
+            className="mt-3 inline-flex max-w-full items-center gap-1 truncate rounded-md text-sm text-brand underline underline-offset-2 transition hover:text-brand-dark"
           >
-            {note.url}
+            🔗 {note.url}
           </a>
         )}
 
         {note.media_path && <NoteAudio mediaPath={note.media_path} />}
 
         {note.type === 'voice' && note.transcript && note.raw_content && (
-          <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-zinc-400">
+          <details className="mt-3 border-t border-dashed border-zinc-200 pt-3 dark:border-zinc-700">
+            <summary className="cursor-pointer text-xs text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-300">
               查看原始转写（未清洗）
             </summary>
             <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-500">
@@ -144,8 +150,8 @@ export default async function NoteDetailPage({
 
       {/* 为什么重要 */}
       {note.why_important && (
-        <section className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900 dark:bg-amber-950">
-          <h2 className="mb-1 text-xs font-medium text-amber-600 dark:text-amber-400">
+        <section className="mt-4 rounded-card border border-amber-200 bg-amber-50 px-5 py-4 dark:border-amber-900/60 dark:bg-amber-950/40">
+          <h2 className="mb-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
             💡 为什么重要
           </h2>
           <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
@@ -156,10 +162,8 @@ export default async function NoteDetailPage({
 
       {/* AI 摘要 */}
       {note.summary && (
-        <section className="mt-4 rounded-2xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">
-            AI 摘要
-          </h2>
+        <section className="mt-4 rounded-card border border-zinc-200/80 bg-white px-5 py-4 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+          <SectionTitle className="mb-1.5">AI 摘要</SectionTitle>
           <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
             {note.summary}
           </p>
@@ -167,34 +171,32 @@ export default async function NoteDetailPage({
       )}
 
       {/* 标签（可编辑 → corrections） */}
-      <section className="mt-4">
-        <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-          标签
-        </h2>
+      <section className="mt-6">
+        <SectionTitle>标签</SectionTitle>
         <NoteTagEditor noteId={note.id} tags={tags} />
       </section>
 
       {/* 提炼出的概念 */}
       {concepts.length > 0 && (
-        <section className="mt-5">
-          <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-            提炼出的概念（{concepts.length}）
-          </h2>
-          <ul className="space-y-2">
+        <section className="mt-6">
+          <SectionTitle>提炼出的概念（{concepts.length}）</SectionTitle>
+          <ul className="space-y-2.5">
             {concepts.map((c) => (
               <li key={c.id}>
                 <Link
                   href={`/library/concept/${c.id}`}
-                  className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white px-4 py-3 transition active:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:active:bg-zinc-800"
+                  className={cn(cardClass({ interactive: true, padded: false }), 'group flex items-center justify-between px-4 py-3.5')}
                 >
-                  <span className="font-medium">💡 {c.name}</span>
-                  <span className="text-zinc-400">›</span>
+                  <span className="font-medium text-zinc-800 dark:text-zinc-100">💡 {c.name}</span>
+                  <span className="text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600">
+                    ›
+                  </span>
                 </Link>
               </li>
             ))}
           </ul>
         </section>
       )}
-    </main>
+    </PageShell>
   );
 }

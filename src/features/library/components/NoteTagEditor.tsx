@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button, fieldClass } from '@/components/ui';
 
 export default function NoteTagEditor({
   noteId,
@@ -61,7 +62,7 @@ export default function NoteTagEditor({
           tags.map((t) => (
             <span
               key={t}
-              className="rounded-full bg-brand-light px-2.5 py-1 text-xs text-brand dark:bg-zinc-800 dark:text-zinc-300"
+              className="rounded-pill bg-brand-light px-2.5 py-1 text-xs font-medium text-brand dark:bg-brand/15 dark:text-brand-100"
             >
               #{t}
             </span>
@@ -72,7 +73,7 @@ export default function NoteTagEditor({
             setValue(tags.join('，'));
             setEditing(true);
           }}
-          className="rounded-lg px-2 py-1 text-xs text-zinc-400 transition active:text-zinc-600"
+          className="rounded-md px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-brand dark:hover:bg-zinc-800"
         >
           ✏️ 修正
         </button>
@@ -81,31 +82,23 @@ export default function NoteTagEditor({
   }
 
   return (
-    <div className="rounded-2xl border border-brand/40 bg-white p-4 dark:bg-zinc-900">
+    <div className="animate-fade-in rounded-card border border-brand/40 bg-white p-4 shadow-card dark:bg-zinc-900">
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="标签用逗号分隔，如：心理学，决策偏差"
-        className="w-full rounded-xl border border-zinc-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-brand dark:border-zinc-700 dark:bg-zinc-800"
+        className={fieldClass('px-3 py-2.5 text-sm dark:bg-zinc-800')}
       />
       {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
       <div className="mt-3 flex gap-2">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-semibold text-white transition active:opacity-80 disabled:opacity-50"
-        >
+        <Button onClick={save} loading={saving} fullWidth>
           {saving ? '保存中…' : '保存修正'}
-        </button>
-        <button
-          onClick={() => setEditing(false)}
-          disabled={saving}
-          className="rounded-xl border border-zinc-200 px-4 py-2.5 text-sm text-zinc-500 transition active:bg-zinc-50 dark:border-zinc-700"
-        >
+        </Button>
+        <Button variant="secondary" onClick={() => setEditing(false)} disabled={saving}>
           取消
-        </button>
+        </Button>
       </div>
-      <p className="mt-2 text-xs text-zinc-400">修正会被记录，用于改进后续 AI 整理。</p>
+      <p className="mt-2.5 text-xs text-zinc-400">修正会被记录，用于改进后续 AI 整理。</p>
     </div>
   );
 }

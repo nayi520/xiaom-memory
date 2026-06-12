@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { DigestResult } from '../pipeline';
+import { Button } from '@/components/ui';
 
 type State =
   | { phase: 'idle' }
@@ -33,17 +34,20 @@ export default function DigestNowButton() {
 
   return (
     <div className="space-y-3">
-      <button
+      <Button
+        size="lg"
+        fullWidth
         onClick={run}
-        disabled={state.phase === 'running'}
-        className="w-full rounded-xl bg-brand py-3 font-semibold text-white transition active:opacity-80 disabled:opacity-50"
+        loading={state.phase === 'running'}
       >
         {state.phase === 'running' ? '整理中…（可能需要 1–2 分钟）' : '立即整理'}
-      </button>
+      </Button>
 
       {state.phase === 'done' && (
-        <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm dark:border-zinc-700 dark:bg-zinc-800">
-          <p className="font-medium">整理完成（{state.result.period}）</p>
+        <div className="animate-fade-in rounded-card border border-zinc-200/80 bg-zinc-50 p-4 text-sm shadow-card dark:border-zinc-700 dark:bg-zinc-800/60">
+          <p className="font-semibold text-zinc-800 dark:text-zinc-100">
+            整理完成（{state.result.period}）
+          </p>
           <ul className="mt-2 space-y-1 text-zinc-600 dark:text-zinc-300">
             <li>处理记录：{state.result.notesProcessed} / {state.result.notesTotal}</li>
             <li>新概念：{state.result.conceptsCreated} ｜ 新卡片：{state.result.cardsCreated}</li>
@@ -61,7 +65,10 @@ export default function DigestNowButton() {
       )}
 
       {state.phase === 'error' && (
-        <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+        <p
+          role="alert"
+          className="animate-fade-in rounded-card border border-red-200 bg-red-50 p-3.5 text-sm text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400"
+        >
           {state.message}
         </p>
       )}

@@ -37,7 +37,7 @@ export default function NoteSource({ note }: { note: SourceNote }) {
   const text = note.raw_content || note.transcript || '';
 
   return (
-    <li className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+    <li className="rounded-field border border-zinc-200/80 bg-zinc-50 px-3.5 py-3 text-sm dark:border-zinc-700/80 dark:bg-zinc-800/60">
       <div className="flex items-start gap-2">
         <span className="mt-0.5 shrink-0">{TYPE_ICON[note.type] ?? '📝'}</span>
         <div className="min-w-0 flex-1 space-y-1.5">

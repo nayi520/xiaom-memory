@@ -9,10 +9,10 @@ import {
   type HitSource,
   type SearchHit,
 } from '../search';
+import { EmptyState, cardClass, cn } from '@/components/ui';
 
 const SOURCE_STYLES: Record<HitSource, string> = {
-  keyword:
-    'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
+  keyword: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
   tag: 'bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400',
   semantic: 'bg-sky-50 text-sky-600 dark:bg-sky-950 dark:text-sky-400',
 };
@@ -28,25 +28,31 @@ export default function SearchResults({ q, hits, semanticUsed }: Props) {
     <section>
       <div className="mb-3 flex items-center justify-between text-sm text-zinc-400">
         <p>
-          “{q}” 共 {hits.length} 条结果
+          “<span className="font-medium text-zinc-600 dark:text-zinc-300">{q}</span>” 共{' '}
+          {hits.length} 条结果
         </p>
-        <Link href="/library" className="transition active:text-zinc-600">
+        <Link
+          href="/library"
+          className="rounded-md transition hover:text-zinc-600 dark:hover:text-zinc-300"
+        >
           清除 ✕
         </Link>
       </div>
 
       {!semanticUsed && (
-        <p className="mb-3 rounded-xl bg-zinc-100 px-3 py-2 text-xs text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+        <p className="mb-3 rounded-field bg-zinc-100 px-3.5 py-2.5 text-xs leading-relaxed text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
           语义搜索未启用（需配置 OPENAI_API_KEY），当前仅关键词与标签匹配。
         </p>
       )}
 
       {hits.length === 0 ? (
-        <p className="mt-10 text-center text-sm text-zinc-400">
-          没找到相关内容，换个关键词试试。
-        </p>
+        <EmptyState
+          icon="🔍"
+          title="没找到相关内容"
+          description="换个关键词，或检查有没有错别字。"
+        />
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-2.5">
           {hits.map((hit) => (
             <li key={`${hit.kind}:${hit.id}`}>
               <Link
@@ -55,17 +61,20 @@ export default function SearchResults({ q, hits, semanticUsed }: Props) {
                     ? `/library/concept/${hit.id}`
                     : `/library/note/${hit.id}`
                 }
-                className="block rounded-2xl border border-zinc-200 bg-white px-4 py-3.5 transition active:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:active:bg-zinc-800"
+                className={cn(cardClass({ interactive: true, padded: false }), 'block px-4 py-3.5')}
               >
                 <div className="flex items-center gap-2">
-                  <span className="shrink-0 text-xs text-zinc-400">
+                  <span className="shrink-0 text-xs font-medium text-zinc-400">
                     {hit.kind === 'concept' ? '💡 概念' : '📝 记录'}
                   </span>
-                  <span className="flex gap-1">
+                  <span className="flex flex-wrap gap-1">
                     {hit.sources.map((s) => (
                       <span
                         key={s}
-                        className={`rounded-full px-1.5 py-0.5 text-[10px] leading-none ${SOURCE_STYLES[s]}`}
+                        className={cn(
+                          'rounded-pill px-1.5 py-0.5 text-[10px] font-medium leading-none',
+                          SOURCE_STYLES[s]
+                        )}
                       >
                         {HIT_SOURCE_LABELS[s]}
                         {s === 'semantic' && hit.similarity !== undefined
@@ -75,7 +84,7 @@ export default function SearchResults({ q, hits, semanticUsed }: Props) {
                     ))}
                   </span>
                 </div>
-                <p className="mt-1.5 break-words font-medium leading-snug">
+                <p className="mt-1.5 break-words font-semibold leading-snug text-zinc-800 dark:text-zinc-100">
                   {hit.title}
                 </p>
                 {hit.snippet && (

@@ -2,6 +2,7 @@
 
 import type { RecentItem } from '../types';
 import NoteDeleteButton from './NoteDeleteButton';
+import { SectionTitle, Badge, cn } from '@/components/ui';
 
 const TYPE_ICON: Record<string, string> = {
   text: '✏️',
@@ -35,38 +36,45 @@ export default function RecentNotes({
   if (items.length === 0) return null;
 
   return (
-    <section className="mt-8">
-      <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-        最近记录
-      </h2>
-      <ul className="space-y-2">
+    <section className="mt-10">
+      <SectionTitle>最近记录</SectionTitle>
+      <ul className="space-y-2.5">
         {items.map((item) => (
           <li
             key={item.id}
-            className={`rounded-xl border bg-white px-4 py-3 text-sm transition dark:bg-zinc-900 ${
+            className={cn(
+              'group animate-fade-in rounded-card border bg-white px-4 py-3.5 text-sm shadow-card transition duration-200 dark:bg-zinc-900',
               item.failed
                 ? 'border-red-300 dark:border-red-900'
-                : 'border-zinc-200 dark:border-zinc-800'
-            } ${item.pending ? 'opacity-60' : ''}`}
+                : 'border-zinc-200/80 dark:border-zinc-800',
+              item.pending && 'opacity-70'
+            )}
           >
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 shrink-0">{TYPE_ICON[item.type] ?? '📝'}</span>
+            <div className="flex items-start gap-2.5">
+              <span className="mt-0.5 shrink-0 text-base leading-none">
+                {TYPE_ICON[item.type] ?? '📝'}
+              </span>
               <div className="min-w-0 flex-1">
-                <p className="break-words leading-relaxed">{preview(item)}</p>
-                {item.why_important && (
-                  <p className="mt-1 text-xs text-zinc-400">
-                    💡 {item.why_important}
-                  </p>
-                )}
-                <p className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
-                  <span>{timeAgo(item.created_at)}</span>
-                  {item.pending && <span className="text-brand">保存中…</span>}
-                  {!item.pending && !item.failed && !item.hint && (
-                    <span className="text-emerald-500">✓ 已记下</span>
-                  )}
-                  {item.hint && <span className="text-amber-500">{item.hint}</span>}
-                  {item.failed && <span className="text-red-500">✕ 失败</span>}
+                <p className="break-words leading-relaxed text-zinc-800 dark:text-zinc-100">
+                  {preview(item)}
                 </p>
+                {item.why_important && (
+                  <p className="mt-1 text-xs text-zinc-400">💡 {item.why_important}</p>
+                )}
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
+                  <span>{timeAgo(item.created_at)}</span>
+                  {item.pending && (
+                    <Badge tone="brand">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                      保存中
+                    </Badge>
+                  )}
+                  {!item.pending && !item.failed && !item.hint && (
+                    <Badge tone="emerald">✓ 已记下</Badge>
+                  )}
+                  {item.hint && <Badge tone="amber">{item.hint}</Badge>}
+                  {item.failed && <Badge tone="red">✕ 失败</Badge>}
+                </div>
               </div>
               {/* 已落库的记录才可删除（乐观占位 / 保存中不显示） */}
               {!item.pending && !item.failed && !item.id.startsWith('temp-') && (

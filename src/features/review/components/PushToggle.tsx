@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui';
 
 type Phase =
   | 'loading' // 检测中
@@ -25,10 +26,34 @@ function urlBase64ToUint8Array(base64: string) {
   return arr;
 }
 
+/** 缺省提醒小时（北京时间 8 点），与后端保持一致。 */
+const DEFAULT_REMINDER_HOUR = 8;
+
 export default function PushToggle() {
   const [phase, setPhase] = useState<Phase>('loading');
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // 反映实际设定的提醒小时（与 ReminderTimePicker 同源 /api/settings）。
+  const [reminderHour, setReminderHour] = useState<number>(DEFAULT_REMINDER_HOUR);
+
+  // 拉取当前提醒时间，让文案反映真实设定（失败保留缺省 8 点）。
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/settings')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { settings?: { reminderHour?: number } } | null) => {
+        const h = data?.settings?.reminderHour;
+        if (!cancelled && typeof h === 'number' && h >= 0 && h <= 23) {
+          setReminderHour(h);
+        }
+      })
+      .catch(() => {
+        /* 忽略：保留缺省值 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,12 +157,9 @@ export default function PushToggle() {
   if (phase === 'unconfigured') {
     return (
       <div className="space-y-2">
-        <button
-          disabled
-          className="w-full rounded-xl bg-zinc-200 py-3 font-semibold text-zinc-400 dark:bg-zinc-800"
-        >
+        <Button size="lg" fullWidth disabled variant="secondary">
           开启每日复习提醒
-        </button>
+        </Button>
         <p className="text-xs text-amber-500">
           推送服务未配置：服务端缺少 VAPID 密钥（见 .env.example）。
         </p>
@@ -153,23 +175,22 @@ export default function PushToggle() {
   }
 
   const on = phase === 'on';
+  const reminderTime = `${String(reminderHour).padStart(2, '0')}:00`;
   return (
     <div className="space-y-2">
-      <button
+      <Button
+        size="lg"
+        fullWidth
+        variant={on ? 'secondary' : 'primary'}
         onClick={on ? disable : enable}
-        disabled={phase === 'busy'}
-        className={`w-full rounded-xl py-3 font-semibold transition active:opacity-80 disabled:opacity-50 ${
-          on
-            ? 'border border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300'
-            : 'bg-brand text-white'
-        }`}
+        loading={phase === 'busy'}
       >
         {phase === 'busy' ? '处理中…' : on ? '关闭复习提醒' : '开启每日复习提醒'}
-      </button>
-      <p className="text-xs text-zinc-400">
+      </Button>
+      <p className="text-xs leading-relaxed text-zinc-400">
         {on
-          ? '已开启：每天早上 8:00（北京时间）有到期卡片时推送提醒，点击直达复习页。'
-          : '开启后，每天早上 8:00 有到期卡片时会收到推送提醒。'}
+          ? `已开启：每天 ${reminderTime}（北京时间）有到期卡片时推送提醒，点击直达复习页。`
+          : `开启后，每天 ${reminderTime} 有到期卡片时会收到推送提醒。`}
       </p>
       {message && <p className="text-xs text-red-500">{message}</p>}
     </div>

@@ -12,12 +12,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { RATING_LABELS, type ReviewRating } from '../fsrs';
 import type { ReviewQueueItem } from '../types';
 import NoteSource from './NoteSource';
+import { Button, SectionTitle, cn } from '@/components/ui';
 
 const RATING_STYLES: Record<ReviewRating, string> = {
-  1: 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950 dark:text-red-400 dark:border-red-900',
-  2: 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900',
-  3: 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900',
-  4: 'bg-sky-50 text-sky-600 border-sky-200 dark:bg-sky-950 dark:text-sky-400 dark:border-sky-900',
+  1: 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-900/60',
+  2: 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-900 dark:hover:bg-amber-900/60',
+  3: 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-900 dark:hover:bg-emerald-900/60',
+  4: 'bg-sky-50 text-sky-600 border-sky-200 hover:bg-sky-100 dark:bg-sky-950 dark:text-sky-400 dark:border-sky-900 dark:hover:bg-sky-900/60',
 };
 
 interface Props {
@@ -91,20 +92,21 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
   if (finished) {
     const reviewedCount = stats[1] + stats[2] + stats[3] + stats[4];
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-24 pt-6">
+      <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10">
         <Header />
         <div className="flex flex-1 flex-col gap-4">
-          <section className="rounded-2xl border border-zinc-200 bg-white p-5 text-center dark:border-zinc-800 dark:bg-zinc-900">
+          <section className="animate-fade-in-up rounded-card border border-zinc-200/80 bg-white p-7 text-center shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="mx-auto mb-1 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-zinc-100 to-zinc-50 text-4xl shadow-card ring-1 ring-zinc-200/60 dark:from-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60">
+              {items.length === 0 ? '🎉' : skipped ? '🌿' : '✅'}
+            </div>
             {items.length === 0 ? (
               <>
-                <p className="text-3xl">🎉</p>
-                <p className="mt-2 font-semibold">今天没有到期的卡片</p>
+                <p className="mt-3 text-lg font-semibold">今天没有到期的卡片</p>
                 <p className="mt-1 text-sm text-zinc-400">记点新东西，或者休息一下。</p>
               </>
             ) : skipped ? (
               <>
-                <p className="text-3xl">🌿</p>
-                <p className="mt-2 font-semibold">今天跳过，完全没问题</p>
+                <p className="mt-3 text-lg font-semibold">今天跳过，完全没问题</p>
                 <p className="mt-1 text-sm text-zinc-400">
                   卡片会留在队列里，明天再见。
                   {reviewedCount > 0 && `（已完成 ${reviewedCount} 张）`}
@@ -112,8 +114,7 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
               </>
             ) : (
               <>
-                <p className="text-3xl">✅</p>
-                <p className="mt-2 font-semibold">今日复习完成</p>
+                <p className="mt-3 text-lg font-semibold">今日复习完成</p>
                 <p className="mt-1 text-sm text-zinc-400">
                   共 {reviewedCount} 张
                   {totalDue > items.length && `（还有 ${totalDue - items.length} 张顺延到明天）`}
@@ -122,27 +123,35 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
             )}
 
             {reviewedCount > 0 && (
-              <ul className="mt-4 flex justify-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
+              <ul className="mt-5 flex flex-wrap justify-center gap-2 text-xs">
                 {( [1, 2, 3, 4] as ReviewRating[] ).map((r) => (
-                  <li key={r}>
+                  <li
+                    key={r}
+                    className={cn(
+                      'rounded-pill border px-2.5 py-1 font-medium',
+                      RATING_STYLES[r]
+                    )}
+                  >
                     {RATING_LABELS[r]} {stats[r]}
                   </li>
                 ))}
-                {graduated > 0 && <li className="text-sky-500">毕业 {graduated} 🎓</li>}
+                {graduated > 0 && (
+                  <li className="rounded-pill border border-sky-200 bg-sky-50 px-2.5 py-1 font-medium text-sky-600 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-400">
+                    毕业 {graduated} 🎓
+                  </li>
+                )}
               </ul>
             )}
             {saveErrors > 0 && (
-              <p className="mt-2 text-xs text-red-500">
+              <p className="mt-3 text-xs text-red-500">
                 {saveErrors} 次评分保存失败（网络问题），这些卡片仍会留在队列
               </p>
             )}
           </section>
 
           {digestMd && (
-            <section className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-              <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-                今日简报
-              </h2>
+            <section className="animate-fade-in-up rounded-card border border-zinc-200/80 bg-white p-6 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+              <SectionTitle>今日简报</SectionTitle>
               <div className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">
                 {digestMd}
               </div>
@@ -151,7 +160,7 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
 
           <Link
             href="/"
-            className="mt-2 block rounded-xl bg-brand py-3 text-center font-semibold text-white transition active:opacity-80"
+            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-field bg-brand py-3 text-center font-semibold text-white shadow-card transition duration-150 ease-smooth hover:bg-brand-dark hover:shadow-card-hover active:scale-[0.99]"
           >
             返回记录
           </Link>
@@ -161,9 +170,25 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
   }
 
   // ============ 复习中 ============
+  const progressPct = Math.round((idx / items.length) * 100);
+
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-24 pt-6">
+    <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10">
       <Header progress={`${idx + 1} / ${items.length}`} />
+
+      {/* 进度条 */}
+      <div
+        className="mb-5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200/80 dark:bg-zinc-800"
+        role="progressbar"
+        aria-valuenow={idx + 1}
+        aria-valuemin={1}
+        aria-valuemax={items.length}
+      >
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-brand to-brand-dark transition-all duration-300 ease-smooth"
+          style={{ width: `${progressPct}%` }}
+        />
+      </div>
 
       <div className="flex flex-1 flex-col">
         <section
@@ -171,34 +196,45 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
           tabIndex={0}
           aria-label={flipped ? '答案' : '问题（点击翻面）'}
           onClick={() => !flipped && setFlipped(true)}
-          className={`flex min-h-[40dvh] flex-col rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900 ${
-            flipped ? '' : 'cursor-pointer'
-          }`}
+          onKeyDown={(e) => {
+            if (!flipped && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              setFlipped(true);
+            }
+          }}
+          className={cn(
+            'flex min-h-[40dvh] flex-col rounded-card border border-zinc-200/80 bg-white p-6 shadow-card transition duration-200 dark:border-zinc-800 dark:bg-zinc-900',
+            flipped ? '' : 'cursor-pointer hover:border-zinc-300 hover:shadow-card-hover dark:hover:border-zinc-700'
+          )}
         >
           {current.conceptName && (
-            <p className="mb-2 text-xs text-zinc-400">{current.conceptName}</p>
+            <p className="mb-2.5 text-xs font-medium uppercase tracking-wide text-brand/70">
+              {current.conceptName}
+            </p>
           )}
-          <p className="text-lg font-semibold leading-relaxed">{current.question}</p>
+          <p className="text-lg font-semibold leading-relaxed text-zinc-900 dark:text-zinc-50">
+            {current.question}
+          </p>
 
           {flipped ? (
-            <div className="mt-4 border-t border-dashed border-zinc-200 pt-4 dark:border-zinc-700">
+            <div className="animate-flip-in mt-5 border-t border-dashed border-zinc-200 pt-5 dark:border-zinc-700">
               <p className="leading-relaxed text-zinc-700 dark:text-zinc-200">
                 {current.answer}
               </p>
 
               {current.notes.length > 0 && (
-                <div className="mt-4">
+                <div className="mt-5">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowSource((s) => !s);
                     }}
-                    className="text-xs text-brand underline-offset-2 transition active:opacity-70"
+                    className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-brand underline-offset-2 transition hover:underline"
                   >
                     {showSource ? '收起原始记录 ▴' : '查看原始记录 ▾'}
                   </button>
                   {showSource && (
-                    <ul className="mt-2 space-y-2">
+                    <ul className="animate-fade-in mt-2.5 space-y-2">
                       {current.notes.map((note) => (
                         <NoteSource key={note.id} note={note} />
                       ))}
@@ -209,18 +245,21 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
             </div>
           ) : (
             <p className="mt-auto pt-6 text-center text-xs text-zinc-400">
-              点击卡片或按空格翻面
+              点击卡片或按 <kbd className="rounded bg-zinc-100 px-1.5 py-0.5 dark:bg-zinc-800">空格</kbd> 翻面
             </p>
           )}
         </section>
 
         {flipped ? (
-          <div className="mt-4 grid grid-cols-4 gap-2">
+          <div className="animate-fade-in-up mt-4 grid grid-cols-4 gap-2">
             {( [1, 2, 3, 4] as ReviewRating[] ).map((r) => (
               <button
                 key={r}
                 onClick={() => rate(r)}
-                className={`rounded-xl border py-3 text-sm font-semibold transition active:opacity-70 ${RATING_STYLES[r]}`}
+                className={cn(
+                  'rounded-field border py-3 text-sm font-semibold transition duration-150 ease-smooth active:scale-95',
+                  RATING_STYLES[r]
+                )}
               >
                 {RATING_LABELS[r]}
                 <span className="mt-0.5 block text-[10px] font-normal opacity-60">{r}</span>
@@ -228,12 +267,9 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
             ))}
           </div>
         ) : (
-          <button
-            onClick={() => setFlipped(true)}
-            className="mt-4 rounded-xl bg-brand py-3 font-semibold text-white transition active:opacity-80"
-          >
+          <Button size="lg" fullWidth className="mt-4" onClick={() => setFlipped(true)}>
             翻面看答案
-          </button>
+          </Button>
         )}
 
         <button
@@ -241,7 +277,7 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
             setSkipped(true);
             setFinished(true);
           }}
-          className="mt-6 self-center text-xs text-zinc-400 underline-offset-2 transition active:text-zinc-600"
+          className="mt-6 self-center rounded-md text-xs text-zinc-400 underline-offset-2 transition hover:text-zinc-600 hover:underline dark:hover:text-zinc-300"
         >
           全部跳过今天（不计错，明天再来）
         </button>
@@ -253,11 +289,15 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
 function Header({ progress }: { progress?: string }) {
   return (
     <header className="mb-4 flex items-center justify-between">
-      <h1 className="text-xl font-bold text-brand">复习</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">复习</h1>
       <div className="flex items-center gap-3 text-sm text-zinc-400">
-        {progress && <span>{progress}</span>}
-        <Link href="/" className="transition active:text-zinc-600">
-          ← 返回记录
+        {progress && (
+          <span className="rounded-pill bg-zinc-100 px-2.5 py-1 text-xs font-medium tabular-nums text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+            {progress}
+          </span>
+        )}
+        <Link href="/" className="rounded-md transition hover:text-zinc-600 dark:hover:text-zinc-300">
+          ← 返回
         </Link>
       </div>
     </header>

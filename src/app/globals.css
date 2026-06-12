@@ -2,10 +2,119 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 html {
   -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+  /* 安全区垫底，配合 standalone PWA */
+  background-color: #fafafa;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    background-color: #09090b;
+  }
 }
 
 body {
-  @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  @apply min-h-dvh bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+  /* 极淡的径向高光，让大屏不再是一整片死板纯色（移动端几乎不可见，桌面端有质感） */
+  background-image: radial-gradient(
+    1200px 600px at 50% -10%,
+    rgb(79 70 229 / 0.05),
+    transparent 70%
+  );
+  background-attachment: fixed;
+  font-feature-settings: 'cv11', 'ss01';
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background-image: radial-gradient(
+      1200px 600px at 50% -10%,
+      rgb(99 102 241 / 0.08),
+      transparent 70%
+    );
+  }
+}
+
+/* 统一的键盘焦点态：只在键盘导航时出现，不打扰鼠标/触摸用户 */
+@layer base {
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-zinc-50 dark:ring-offset-zinc-950;
+  }
+  /* 表单控件配色随系统，避免深色下浏览器默认蓝 */
+  :root {
+    accent-color: #4f46e5;
+    color-scheme: light dark;
+  }
+}
+
+@layer components {
+  /* 骨架屏：柔和脉冲 + 流光 */
+  .skeleton {
+    @apply relative overflow-hidden rounded-md bg-zinc-200/70 dark:bg-zinc-800/70;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.45),
+      transparent
+    );
+    animation: shimmer 1.5s infinite;
+  }
+  .dark .skeleton::after,
+  :is(.dark) .skeleton::after {
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.06),
+      transparent
+    );
+  }
+
+  /* 玻璃拟态条（底栏 / 顶栏） */
+  .glass {
+    @apply bg-white/80 backdrop-blur-xl backdrop-saturate-150 dark:bg-zinc-900/80;
+  }
+}
+
+/* 尊重"减少动态效果"系统偏好 */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .skeleton::after {
+    animation: none;
+  }
+}
+
+/* 细滚动条（桌面端，移动端无影响） */
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-zinc-300/70 dark:bg-zinc-700/70;
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-400/80 dark:bg-zinc-600/80;
+  }
 }

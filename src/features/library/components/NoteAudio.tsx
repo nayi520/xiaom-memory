@@ -24,7 +24,13 @@ export default function NoteAudio({ mediaPath }: { mediaPath: string }) {
     };
   }, [mediaPath]);
 
-  if (!url) return <p className="mt-3 text-xs text-zinc-400">音频加载中…</p>;
+  if (!url)
+    return (
+      <p className="mt-3 flex items-center gap-2 text-xs text-zinc-400">
+        <span className="h-3 w-3 animate-spin rounded-full border-2 border-zinc-300 border-t-brand" />
+        音频加载中…
+      </p>
+    );
   // eslint-disable-next-line jsx-a11y/media-has-caption
   return <audio controls preload="none" src={url} className="mt-3 w-full" />;
 }

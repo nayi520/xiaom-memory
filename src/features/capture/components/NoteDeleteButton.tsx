@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui';
 
 export default function NoteDeleteButton({
   noteId,
@@ -67,37 +68,42 @@ export default function NoteDeleteButton({
         }}
         className={
           className ??
-          'shrink-0 rounded-lg px-2 py-1 text-xs text-zinc-400 transition active:text-red-500'
+          'shrink-0 rounded-md p-1.5 text-zinc-300 opacity-60 transition hover:bg-red-50 hover:text-red-500 hover:opacity-100 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-red-950'
         }
         aria-label="删除这条记录"
+        title={label}
       >
-        🗑️ {label}
+        <TrashGlyph />
       </button>
     );
   }
 
   return (
-    <div className="flex flex-col items-end gap-1.5">
+    <div className="animate-scale-in flex flex-col items-end gap-2">
       <p className="text-xs text-zinc-400">移到回收站？可在回收站恢复。</p>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={trash}
-          disabled={busy}
-          className="rounded-lg bg-red-500 px-3 py-1 text-xs font-semibold text-white transition active:opacity-80 disabled:opacity-50"
-        >
+        <Button size="sm" variant="dangerSolid" onClick={trash} loading={busy}>
           {busy ? '处理中…' : '移到回收站'}
-        </button>
-        <button
-          type="button"
-          onClick={() => setConfirming(false)}
-          disabled={busy}
-          className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-500 transition active:bg-zinc-50 dark:border-zinc-700"
-        >
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => setConfirming(false)} disabled={busy}>
           取消
-        </button>
+        </Button>
       </div>
       {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
+  );
+}
+
+function TrashGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+      <path
+        d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7M10 11v6M14 11v6"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

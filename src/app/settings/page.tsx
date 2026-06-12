@@ -1,51 +1,62 @@
 import Link from 'next/link';
 import DigestNowButton from '@/features/digest/components/DigestNowButton';
 import PushToggle from '@/features/review/components/PushToggle';
+import ReminderTimePicker from '@/features/review/components/ReminderTimePicker';
+import { PageShell, SectionTitle, cardClass, cn } from '@/components/ui';
 
 export const metadata = { title: '设置 · 小M' };
 
 export default function SettingsPage() {
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-24 pt-6">
-      <header className="mb-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-brand">设置</h1>
+    <PageShell>
+      <header className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+          设置
+        </h1>
       </header>
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
-          AI 整理
-        </h2>
-        <p className="text-xs text-zinc-400">
+      <section className="space-y-2.5">
+        <SectionTitle className="mb-1">AI 整理</SectionTitle>
+        <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
           系统每晚 23:00（北京时间）自动整理当天记录。也可以现在手动触发。
         </p>
         <DigestNowButton />
       </section>
 
-      <section className="mt-8 space-y-2">
-        <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
-          复习提醒
-        </h2>
+      <section className="mt-9 space-y-3">
+        <SectionTitle className="mb-1">复习提醒</SectionTitle>
+        <ReminderTimePicker />
         <PushToggle />
       </section>
 
-      <section className="mt-8 space-y-2">
-        <h2 className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">
-          记录管理
-        </h2>
+      <section className="mt-9 space-y-2.5">
+        <SectionTitle className="mb-1">记录管理</SectionTitle>
         <Link
           href="/trash"
-          className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-4 transition active:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:active:bg-zinc-800"
+          className={cn(
+            cardClass({ interactive: true, padded: false }),
+            'group flex items-center justify-between px-4 py-4'
+          )}
         >
-          <span className="flex items-center gap-2 font-medium">
+          <span className="flex items-center gap-2.5 font-medium text-zinc-800 dark:text-zinc-100">
             <span aria-hidden>🗑️</span>
             回收站
           </span>
-          <span className="text-sm text-zinc-400" aria-hidden>
+          <span
+            className="text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+            aria-hidden
+          >
             ›
           </span>
         </Link>
-        <p className="text-xs text-zinc-400">删除的记录会先移到回收站，可恢复或永久删除。</p>
+        <p className="text-sm leading-relaxed text-zinc-400">
+          删除的记录会先移到回收站，可恢复或永久删除。
+        </p>
       </section>
-    </main>
+
+      <p className="mt-12 text-center text-xs text-zinc-300 dark:text-zinc-700">
+        小M · 你负责遇见，小M 替你记得
+      </p>
+    </PageShell>
   );
 }

@@ -21,6 +21,7 @@ import {
 } from '@/lib/db/schema';
 import { excerpt } from '@/features/library/search';
 import ConceptEditor from '@/features/library/components/ConceptEditor';
+import { PageShell, SectionTitle, Badge, cardClass, cn } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '概念 · 小M' };
@@ -145,18 +146,21 @@ export default async function ConceptDetailPage({
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 pb-24 pt-6">
+    <PageShell>
       {/* 面包屑 */}
-      <nav className="mb-3 flex flex-wrap items-center gap-1 text-sm text-zinc-400">
-        <Link href="/library" className="transition active:text-zinc-600">
+      <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-sm text-zinc-400">
+        <Link
+          href="/library"
+          className="rounded-md transition hover:text-brand dark:hover:text-brand-100"
+        >
           知识库
         </Link>
         {concept.domain && (
           <>
-            <span>›</span>
+            <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>›</span>
             <Link
               href={`/library?domain=${encodeURIComponent(concept.domain)}`}
-              className="transition active:text-zinc-600"
+              className="rounded-md transition hover:text-brand dark:hover:text-brand-100"
             >
               {concept.domain}
             </Link>
@@ -164,10 +168,10 @@ export default async function ConceptDetailPage({
         )}
         {concept.domain && concept.topic && (
           <>
-            <span>›</span>
+            <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>›</span>
             <Link
               href={`/library?domain=${encodeURIComponent(concept.domain)}&topic=${encodeURIComponent(concept.topic)}`}
-              className="transition active:text-zinc-600"
+              className="rounded-md transition hover:text-brand dark:hover:text-brand-100"
             >
               {concept.topic}
             </Link>
@@ -188,20 +192,20 @@ export default async function ConceptDetailPage({
 
       {/* 标签（来自关联记录） */}
       {tagNames.length > 0 && (
-        <section className="mt-4">
+        <section className="mt-6">
           <SectionTitle>标签</SectionTitle>
           <div className="flex flex-wrap gap-1.5">
             {tagNames.map((t) => (
               <Link
                 key={t}
                 href={`/library?q=${encodeURIComponent(t)}`}
-                className="rounded-full bg-brand-light px-2.5 py-1 text-xs text-brand transition active:opacity-70 dark:bg-zinc-800 dark:text-zinc-300"
+                className="rounded-pill bg-brand-light px-2.5 py-1 text-xs font-medium text-brand transition hover:bg-brand/15 active:scale-95 dark:bg-brand/15 dark:text-brand-100 dark:hover:bg-brand/25"
               >
                 #{t}
               </Link>
             ))}
           </div>
-          <p className="mt-1.5 text-xs text-zinc-400">
+          <p className="mt-2 text-xs text-zinc-400">
             标签挂在原始记录上，可在下方记录详情中修改。
           </p>
         </section>
@@ -209,26 +213,22 @@ export default async function ConceptDetailPage({
 
       {/* 关联概念 */}
       {links.length > 0 && (
-        <section className="mt-5">
+        <section className="mt-6">
           <SectionTitle>关联概念（{links.length}）</SectionTitle>
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {links.map((l) => {
               const otherId = l.concept_a === concept.id ? l.concept_b : l.concept_a;
               return (
                 <li key={`${l.concept_a}-${l.concept_b}`}>
                   <Link
                     href={`/library/concept/${otherId}`}
-                    className="block rounded-2xl border border-zinc-200 bg-white px-4 py-3 transition active:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:active:bg-zinc-800"
+                    className={cn(cardClass({ interactive: true, padded: false }), 'block px-4 py-3.5')}
                   >
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">
+                      <span className="font-semibold text-zinc-800 dark:text-zinc-100">
                         {otherNames.get(otherId) ?? '（概念已删除）'}
                       </span>
-                      {l.relation_type && (
-                        <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] text-sky-600 dark:bg-sky-950 dark:text-sky-400">
-                          {l.relation_type}
-                        </span>
-                      )}
+                      {l.relation_type && <Badge tone="sky">{l.relation_type}</Badge>}
                     </div>
                     {l.reason && (
                       <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
@@ -244,26 +244,26 @@ export default async function ConceptDetailPage({
       )}
 
       {/* 关联卡片 */}
-      <section className="mt-5">
+      <section className="mt-6">
         <SectionTitle>复习卡片（{(cards ?? []).length}）</SectionTitle>
         {(cards ?? []).length === 0 ? (
           <p className="text-sm text-zinc-400">还没有卡片。</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {(cards ?? []).map((card) => {
               const due = (card.fsrs_state as { due?: string } | null)?.due;
               return (
                 <li
                   key={card.id}
-                  className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900"
+                  className={cn(cardClass({ padded: false }), 'px-4 py-3.5')}
                 >
-                  <p className="font-medium leading-snug">{card.question}</p>
-                  <p className="mt-1.5 flex flex-wrap gap-x-3 text-xs text-zinc-400">
+                  <p className="font-medium leading-snug text-zinc-800 dark:text-zinc-100">
+                    {card.question}
+                  </p>
+                  <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
                     <span>{CARD_STATUS_LABELS[card.status] ?? card.status}</span>
                     {card.status === 'active' && due && (
-                      <span>
-                        下次复习：{new Date(due).toLocaleDateString('zh-CN')}
-                      </span>
+                      <span>下次复习：{new Date(due).toLocaleDateString('zh-CN')}</span>
                     )}
                   </p>
                 </li>
@@ -274,24 +274,24 @@ export default async function ConceptDetailPage({
       </section>
 
       {/* 原始记录（第四层下钻） */}
-      <section className="mt-5">
+      <section className="mt-6">
         <SectionTitle>原始记录（{notes.length}）</SectionTitle>
         {notes.length === 0 ? (
           <p className="text-sm text-zinc-400">没有关联的原始记录。</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-2.5">
             {notes.map((note) => (
               <li key={note.id}>
                 <Link
                   href={`/library/note/${note.id}`}
-                  className="block rounded-2xl border border-zinc-200 bg-white px-4 py-3 transition active:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:active:bg-zinc-800"
+                  className={cn(cardClass({ interactive: true, padded: false }), 'group block px-4 py-3.5')}
                 >
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-start gap-2.5">
                     <span className="mt-0.5 shrink-0">
                       {NOTE_TYPE_ICON[note.type] ?? '📝'}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="break-words text-sm leading-relaxed">
+                      <p className="break-words text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
                         {excerpt(
                           note.summary ||
                             note.raw_content ||
@@ -300,8 +300,9 @@ export default async function ConceptDetailPage({
                           90
                         ) || '（无文字内容）'}
                       </p>
-                      <p className="mt-1 text-xs text-zinc-400">
-                        {new Date(note.created_at).toLocaleDateString('zh-CN')} · 查看详情 ›
+                      <p className="mt-1.5 text-xs text-zinc-400">
+                        {new Date(note.created_at).toLocaleDateString('zh-CN')} ·{' '}
+                        <span className="text-brand/70 transition group-hover:text-brand">查看详情 ›</span>
                       </p>
                     </div>
                   </div>
@@ -311,14 +312,6 @@ export default async function ConceptDetailPage({
           </ul>
         )}
       </section>
-    </main>
-  );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
-      {children}
-    </h2>
+    </PageShell>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
+import { Input, cn } from '@/components/ui';
 
 const MAX_SECONDS = 180; // 上限 3 分钟
 
@@ -156,42 +157,83 @@ export default function VoiceCapture({
   const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
   const ss = String(seconds % 60).padStart(2, '0');
 
+  const recording = state === 'recording';
+
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-center rounded-2xl border border-zinc-200 bg-white py-10 dark:border-zinc-800 dark:bg-zinc-900">
-        {state === 'recording' && (
-          <p className="mb-4 font-mono text-2xl tabular-nums text-red-500">
-            {mm}:{ss}
-            <span className="ml-2 inline-block h-3 w-3 animate-pulse rounded-full bg-red-500 align-middle" />
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={state === 'recording' ? stopRecording : startRecording}
-          disabled={state === 'saving'}
-          className={`flex h-20 w-20 items-center justify-center rounded-full text-3xl text-white shadow-lg transition active:scale-95 disabled:opacity-50 ${
-            state === 'recording' ? 'bg-red-500' : 'bg-brand'
-          }`}
-          aria-label={state === 'recording' ? '停止录音' : '开始录音'}
-        >
-          {state === 'recording' ? '■' : '🎙️'}
-        </button>
-        <p className="mt-4 text-sm text-zinc-400">
-          {state === 'recording'
+      <div className="flex flex-col items-center rounded-card border border-zinc-200/80 bg-white py-12 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="flex h-7 items-center">
+          {recording && (
+            <p className="font-mono text-2xl font-semibold tabular-nums text-red-500">
+              {mm}:{ss}
+            </p>
+          )}
+        </div>
+        <div className="relative mt-3 flex h-24 w-24 items-center justify-center">
+          {/* 录音时的呼吸光环 */}
+          {recording && (
+            <>
+              <span className="absolute inset-0 animate-ping rounded-full bg-red-500/25" />
+              <span className="absolute inset-2 animate-pulse rounded-full bg-red-500/15" />
+            </>
+          )}
+          <button
+            type="button"
+            onClick={recording ? stopRecording : startRecording}
+            disabled={state === 'saving'}
+            className={cn(
+              'relative flex h-20 w-20 items-center justify-center rounded-full text-3xl text-white shadow-pop transition duration-200 ease-smooth active:scale-95 disabled:opacity-50',
+              recording
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-gradient-to-br from-brand to-brand-dark hover:shadow-card-hover'
+            )}
+            aria-label={recording ? '停止录音' : '开始录音'}
+          >
+            {recording ? (
+              <span className="block h-6 w-6 rounded-[5px] bg-white" />
+            ) : (
+              <MicGlyph />
+            )}
+          </button>
+        </div>
+        <p className="mt-5 text-sm text-zinc-500 dark:text-zinc-400">
+          {recording
             ? '点击停止并保存'
             : state === 'saving'
               ? '保存中…'
               : `点击开始录音（最长 ${MAX_SECONDS / 60} 分钟）`}
         </p>
-        {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+        {error && (
+          <p
+            role="alert"
+            className="mt-3 rounded-field bg-red-50 px-3 py-1.5 text-sm text-red-600 dark:bg-red-950 dark:text-red-400"
+          >
+            {error}
+          </p>
+        )}
       </div>
 
-      <input
+      <Input
         value={why}
         onChange={(e) => setWhy(e.target.value)}
         placeholder="为什么觉得重要？（一句话，可不填）"
-        className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-zinc-800 dark:bg-zinc-900"
+        className="px-4 py-2.5 text-sm"
       />
     </div>
+  );
+}
+
+function MicGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className="h-8 w-8" aria-hidden>
+      <rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" />
+      <path
+        d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

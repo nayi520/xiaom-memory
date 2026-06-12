@@ -9,6 +9,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui';
 
 export default function TrashItemActions({ noteId }: { noteId: string }) {
   const router = useRouter();
@@ -57,49 +58,50 @@ export default function TrashItemActions({ noteId }: { noteId: string }) {
   }
 
   return (
-    <div className="mt-2 flex flex-col items-end gap-1.5">
+    <div className="mt-2.5 flex flex-col items-end gap-1.5 border-t border-zinc-100 pt-2.5 dark:border-zinc-800">
       {!confirming ? (
         <div className="flex items-center gap-2">
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={restore}
+            loading={busy === 'restore'}
             disabled={busy !== null}
-            className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white transition active:opacity-80 disabled:opacity-50"
           >
             {busy === 'restore' ? '恢复中…' : '↩️ 恢复'}
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={() => {
               setError(null);
               setConfirming(true);
             }}
             disabled={busy !== null}
-            className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-500 transition active:text-red-500 disabled:opacity-50 dark:border-zinc-700"
           >
             永久删除
-          </button>
+          </Button>
         </div>
       ) : (
-        <div className="flex flex-col items-end gap-1.5">
+        <div className="animate-scale-in flex flex-col items-end gap-2">
           <p className="text-xs text-zinc-400">永久删除后无法恢复，确定？</p>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              size="sm"
+              variant="dangerSolid"
               onClick={purge}
+              loading={busy === 'purge'}
               disabled={busy !== null}
-              className="rounded-lg bg-red-500 px-3 py-1 text-xs font-semibold text-white transition active:opacity-80 disabled:opacity-50"
             >
               {busy === 'purge' ? '删除中…' : '确认永久删除'}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
               onClick={() => setConfirming(false)}
               disabled={busy !== null}
-              className="rounded-lg border border-zinc-200 px-3 py-1 text-xs text-zinc-500 transition active:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700"
             >
               取消
-            </button>
+            </Button>
           </div>
         </div>
       )}

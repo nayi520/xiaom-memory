@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
+import { Button, Textarea, Input } from '@/components/ui';
 
 export default function TextCapture({
   addOptimistic,
@@ -58,7 +59,7 @@ export default function TextCapture({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <textarea
+      <Textarea
         ref={textareaRef}
         autoFocus
         rows={4}
@@ -66,35 +67,31 @@ export default function TextCapture({
         onChange={(e) => setContent(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="记下此刻想留住的内容…（支持 Markdown）"
-        className="w-full resize-none rounded-2xl border border-zinc-200 bg-white p-4 text-base leading-relaxed outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-zinc-800 dark:bg-zinc-900"
+        className="rounded-card p-4"
       />
 
       {showWhy ? (
-        <input
+        <Input
           autoFocus
           value={why}
           onChange={(e) => setWhy(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="为什么觉得重要？（一句话，可不填）"
-          className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-zinc-800 dark:bg-zinc-900"
+          className="px-4 py-2.5 text-sm"
         />
       ) : (
         <button
           type="button"
           onClick={() => setShowWhy(true)}
-          className="text-sm text-zinc-400 underline-offset-2 hover:underline"
+          className="inline-flex items-center gap-1 rounded-md text-sm text-zinc-400 underline-offset-4 transition hover:text-brand hover:underline"
         >
-          + 为什么重要（可选）
+          <span aria-hidden>＋</span> 为什么重要（可选）
         </button>
       )}
 
-      <button
-        type="submit"
-        disabled={!content.trim()}
-        className="w-full rounded-2xl bg-brand py-3.5 text-base font-medium text-white transition active:scale-[0.98] disabled:opacity-40"
-      >
-        记下（⌘↵）
-      </button>
+      <Button type="submit" size="lg" fullWidth disabled={!content.trim()}>
+        记下 <kbd className="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-xs font-normal">⌘↵</kbd>
+      </Button>
     </form>
   );
 }
