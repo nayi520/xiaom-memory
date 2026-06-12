@@ -1,0 +1,18 @@
+# 小M (Memory) · 容器编排 —— 挂到现有总反代所在的 growth_default 网络
+# 部署：docker compose -f docker-compose.memory.yml up -d --build
+name: memory
+services:
+  memory-web:
+    build:
+      context: .
+    image: memory-web:latest
+    container_name: memory-web
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    networks:
+      - growth_default
+    # 不对宿主机映射端口；仅在 growth_default 网内被总反代 proxy_pass http://memory-web:3100
+networks:
+  growth_default:
+    external: true
