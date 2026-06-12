@@ -3,18 +3,30 @@ import { and, eq } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { notes } from '@/lib/db/schema';
-import { createClient } from '@/lib/supabase/server';
+import { getPublicTaskUrl, OssConfigMissingError } from '@/lib/storage/oss';
+import {
+  transcribeAudioUrl,
+  AsrKeyMissingError,
+  AsrTimeoutError,
+} from '@/lib/asr/funasr';
 
+export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// Fun-ASR 是「提交公网音频 URL → 异步任务 → 轮询取结果」，长音频可能较久。
+// 故放宽到 300s（funasr 模块默认轮询总超时 5min，对齐）。
+// 注：若后续要支持超长音频，可改为「提交即返回 task_id + 前端/后续查询」的异步模式；
+// 本期同步轮询，3 分钟内录音足够用。
+export const maxDuration = 300;
 
 /**
  * POST /api/transcribe  { noteId }
- * 下载 note 对应音频 → OpenAI Whisper 转写 → 更新 transcript
- * 未配置 OPENAI_API_KEY 时优雅降级（音频已保存，转写待配置）
+ * 取 note 对应音频的 OSS 公网签名 URL → Fun-ASR 转写 → 写回 transcript / raw_content。
  *
- * 去 Supabase 改造（Phase B）：notes 读/写改 Drizzle、鉴权改 getCurrentUser；
- * 音频下载暂留 supabase.storage（待 OSS 阶段切换）。
+ * 去 Supabase 改造（Phase C）：
+ *   - 音频不再从 supabase.storage 下载，改用 getPublicTaskUrl(media_path) 给 Fun-ASR 自行拉取；
+ *   - 转写从 Whisper（OpenAI）切到 Fun-ASR（百炼录音文件异步识别）；
+ *   - notes 读/写走 Drizzle、鉴权 getCurrentUser（Phase B 已就绪）。
+ * 未配置 DASHSCOPE_API_KEY / OSS 时优雅降级（音频已保存，转写待配置），不报 500。
  */
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -44,45 +56,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '记录不存在或非语音' }, { status: 404 });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    // 优雅降级：不报错，提示待配置
-    return NextResponse.json({
-      transcribed: false,
-      message: '转写待配置（未设置 OPENAI_API_KEY），音频已保存',
-    });
-  }
-
-  // 从 Storage 下载音频（暂留 supabase.storage，待 OSS 阶段切换）
-  const supabase = createClient();
-  const { data: audio, error: downloadError } = await supabase.storage
-    .from('audio')
-    .download(note.media_path);
-  if (downloadError || !audio) {
-    return NextResponse.json({ error: '音频下载失败' }, { status: 500 });
+  // 取给 Fun-ASR 拉取音频用的公网签名 URL。OSS 未配置时优雅降级。
+  let audioUrl: string;
+  try {
+    audioUrl = await getPublicTaskUrl(note.media_path);
+  } catch (err) {
+    if (err instanceof OssConfigMissingError) {
+      return NextResponse.json({
+        transcribed: false,
+        message: '转写待配置（存储未配置），音频已保存',
+      });
+    }
+    console.error('[transcribe] 取音频 URL 失败：', err);
+    return NextResponse.json({ error: '音频地址生成失败' }, { status: 500 });
   }
 
   try {
-    const form = new FormData();
-    form.append('file', new File([audio], 'audio.webm', { type: 'audio/webm' }));
-    form.append('model', 'whisper-1');
-
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-    });
-
-    if (!res.ok) {
-      const detail = await res.text();
-      console.error('[transcribe] whisper error:', detail.slice(0, 500));
-      return NextResponse.json({
-        transcribed: false,
-        message: '转写失败，音频已保存（稍后可重试）',
-      });
-    }
-
-    const { text } = (await res.json()) as { text: string };
+    const { text } = await transcribeAudioUrl(audioUrl);
 
     try {
       await db
@@ -95,7 +85,21 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ transcribed: true, transcript: text });
   } catch (err) {
-    console.error('[transcribe] error:', err);
+    if (err instanceof AsrKeyMissingError) {
+      // 优雅降级：未配置 DASHSCOPE_API_KEY 时不报错，提示待配置。
+      return NextResponse.json({
+        transcribed: false,
+        message: '转写待配置（未设置 DASHSCOPE_API_KEY），音频已保存',
+      });
+    }
+    if (err instanceof AsrTimeoutError) {
+      console.error('[transcribe] Fun-ASR 超时：', err.message);
+      return NextResponse.json({
+        transcribed: false,
+        message: '转写超时，音频已保存（稍后可重试）',
+      });
+    }
+    console.error('[transcribe] Fun-ASR error:', err);
     return NextResponse.json({
       transcribed: false,
       message: '转写失败，音频已保存（稍后可重试）',

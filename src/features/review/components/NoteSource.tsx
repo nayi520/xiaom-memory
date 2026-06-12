@@ -2,11 +2,10 @@
 
 /**
  * 溯源记录（F3.6）：复习卡 → 概念 → 原始记录，展示原文 / 链接 / 音频。
- * 音频走 Supabase Storage 签名 URL（RLS 限本人）。
+ * 音频走 OSS 签名 URL（经 /api/audio/url，服务端校验归属本人）。
  */
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { SourceNote } from '../types';
 
 const TYPE_ICON: Record<string, string> = {
@@ -22,12 +21,13 @@ export default function NoteSource({ note }: { note: SourceNote }) {
   useEffect(() => {
     if (!note.media_path) return;
     let cancelled = false;
-    const supabase = createClient();
-    supabase.storage
-      .from('audio')
-      .createSignedUrl(note.media_path, 3600)
-      .then(({ data }) => {
-        if (!cancelled && data?.signedUrl) setAudioUrl(data.signedUrl);
+    fetch(`/api/audio/url?key=${encodeURIComponent(note.media_path)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.url) setAudioUrl(data.url as string);
+      })
+      .catch(() => {
+        /* 取地址失败时维持「加载中」占位 */
       });
     return () => {
       cancelled = true;

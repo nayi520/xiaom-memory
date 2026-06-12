@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
 
@@ -88,27 +87,22 @@ export default function VoiceCapture({
     setWhy('');
     setState('idle');
 
-    // 取当前用户 id（构造 Storage 路径用）。去 Supabase：改请求 /api/me。
-    let userId: string;
+    // 1. 上传音频到 OSS —— 改走 /api/audio（服务端取 userId 落 OSS，返回对象 key）。
+    //    去 Supabase：不再浏览器端 supabase.storage.upload；key 即 media_path（含 audio/ 前缀）。
+    let mediaPath: string;
     try {
-      const meRes = await fetch('/api/me');
-      if (!meRes.ok) {
-        failNote(temp.id, '未登录');
+      const upRes = await fetch('/api/audio', {
+        method: 'POST',
+        headers: { 'Content-Type': blob.type || 'audio/webm' },
+        body: blob,
+      });
+      const upData = await upRes.json().catch(() => ({}));
+      if (!upRes.ok || !upData.key) {
+        failNote(temp.id, upData.error || '音频上传失败');
         return;
       }
-      ({ id: userId } = (await meRes.json()) as { id: string });
+      mediaPath = upData.key as string;
     } catch {
-      failNote(temp.id, '未登录');
-      return;
-    }
-
-    // 1. 上传音频到 Storage bucket `audio`（暂留 supabase.storage，待 OSS 阶段切换）
-    const supabase = createClient();
-    const path = `${userId}/${crypto.randomUUID()}.webm`;
-    const { error: uploadError } = await supabase.storage
-      .from('audio')
-      .upload(path, blob, { contentType: 'audio/webm' });
-    if (uploadError) {
       failNote(temp.id, '音频上传失败');
       return;
     }
@@ -121,7 +115,7 @@ export default function VoiceCapture({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'voice',
-          media_path: path,
+          media_path: mediaPath,
           why_important: whyText,
         }),
       });

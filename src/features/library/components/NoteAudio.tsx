@@ -1,23 +1,23 @@
 'use client';
 
 /**
- * 记录详情页音频播放：Supabase Storage 签名 URL（RLS 限本人）。
+ * 记录详情页音频播放：OSS 签名 URL（经 /api/audio/url，服务端校验归属本人）。
  */
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 
 export default function NoteAudio({ mediaPath }: { mediaPath: string }) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const supabase = createClient();
-    supabase.storage
-      .from('audio')
-      .createSignedUrl(mediaPath, 3600)
-      .then(({ data }) => {
-        if (!cancelled && data?.signedUrl) setUrl(data.signedUrl);
+    fetch(`/api/audio/url?key=${encodeURIComponent(mediaPath)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.url) setUrl(data.url as string);
+      })
+      .catch(() => {
+        /* 取地址失败时维持「加载中」占位，不打断页面 */
       });
     return () => {
       cancelled = true;
