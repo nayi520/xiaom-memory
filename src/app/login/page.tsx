@@ -1,7 +1,8 @@
 'use client';
 
 import { Suspense, useState, useTransition } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { signIn as credentialsSignIn } from 'next-auth/react';
 import { emailSignIn, appleSignIn } from './actions';
 import { Button, Input } from '@/components/ui';
 
@@ -23,11 +24,14 @@ export default function LoginPage() {
  * 并 302 回 pages.error（即本页）带 ?error=Configuration —— 不是白屏/500，
  * 但默认只会显示泛化文案。这里据 type 给出「邮件发送失败」等可读提示。
  *
- * 其它常见 type：EmailSignInError / Verification（魔法链接相关）、
+ * 其它常见 type：CredentialsSignin（邮箱+密码校验失败）、
+ * EmailSignInError / Verification（魔法链接相关）、
  * AccessDenied（拒绝授权）、OAuth* / Callback（Apple 等第三方回调）。
  */
 function authErrorMessage(type: string): string {
   switch (type) {
+    case 'CredentialsSignin':
+      return '邮箱或密码错误。';
     case 'Configuration':
     case 'EmailSignInError':
       return '邮件发送失败，请稍后重试或联系管理员。';
@@ -76,23 +80,89 @@ function AppleLogo() {
   );
 }
 
+/** 登录成功后的落地页（与 server action 的 redirectTo 一致）。 */
+const POST_LOGIN_REDIRECT = '/';
+/** 密码最小长度（与 /api/register、password.ts 保持一致）。 */
+const MIN_PASSWORD_LENGTH = 8;
+
 function LoginForm() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   // Auth.js Email magic link 发出后会 redirect 到 verifyRequest（/login?check=email）。
   const sent = searchParams.get('check') === 'email';
   // 登录错误回流（pages.error 指向 /login，Auth.js 带 ?error=...）。
   const authError = searchParams.get('error');
 
+  // 主表单：邮箱 + 密码；mode 在「登录 / 注册」间切换。
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState(authError ? authErrorMessage(authError) : '');
   const [isPending, startTransition] = useTransition();
 
-  function handleEmailSubmit(e: React.FormEvent) {
+  /** 邮箱+密码：登录走 signIn('credentials')，注册先调 /api/register 再自动登录。 */
+  function handleCredentialsSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.trim()) return;
+    const mail = email.trim();
+    if (!mail || !password) return;
+    if (mode === 'signup' && password.length < MIN_PASSWORD_LENGTH) {
+      setErrorMsg(`密码至少需要 ${MIN_PASSWORD_LENGTH} 位`);
+      return;
+    }
+    setErrorMsg('');
+    startTransition(async () => {
+      try {
+        if (mode === 'signup') {
+          // 1) 注册：POST /api/register。
+          const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: mail, password }),
+          });
+          if (!res.ok) {
+            const data = (await res.json().catch(() => null)) as { error?: string } | null;
+            setErrorMsg(data?.error ?? '注册失败，请稍后重试。');
+            return;
+          }
+          // 2) 注册成功后自动登录（下沉到 signIn 流程，复用同一跳转逻辑）。
+        }
+
+        // 登录（注册成功后亦走此分支）：redirect:false 以便就地处理错误。
+        const result = await credentialsSignIn('credentials', {
+          email: mail,
+          password,
+          redirect: false,
+        });
+
+        if (!result || result.error) {
+          setErrorMsg(
+            mode === 'signup'
+              ? '注册成功，但自动登录失败，请直接登录。'
+              : authErrorMessage(result?.error ?? 'CredentialsSignin')
+          );
+          if (mode === 'signup') setMode('signin');
+          return;
+        }
+
+        // 成功：刷新会话并跳转到落地页。
+        router.replace(POST_LOGIN_REDIRECT);
+        router.refresh();
+      } catch {
+        setErrorMsg('网络异常，请稍后重试。');
+      }
+    });
+  }
+
+  /** 次要方式：魔法链接（保留原 server action）。 */
+  function handleMagicLink() {
+    const mail = email.trim();
+    if (!mail) {
+      setErrorMsg('请先填写邮箱');
+      return;
+    }
     setErrorMsg('');
     const fd = new FormData();
-    fd.set('email', email.trim());
+    fd.set('email', mail);
     startTransition(async () => {
       // 成功时 server action 抛 redirect，页面会跳到 ?check=email，不会走到下一行。
       const res = await emailSignIn(fd);
@@ -100,6 +170,7 @@ function LoginForm() {
     });
   }
 
+  /** 次要方式：Apple 登录（保留原 server action）。 */
   function handleApple() {
     setErrorMsg('');
     startTransition(async () => {
@@ -129,7 +200,8 @@ function LoginForm() {
           </div>
         ) : (
           <>
-            <form onSubmit={handleEmailSubmit} className="mt-10 space-y-4">
+            {/* —— 主登录方式：邮箱 + 密码 —— */}
+            <form onSubmit={handleCredentialsSubmit} className="mt-10 space-y-4">
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-zinc-600 dark:text-zinc-400">
                   邮箱
@@ -144,26 +216,45 @@ function LoginForm() {
                   autoComplete="email"
                 />
               </label>
+              <label className="block">
+                <span className="mb-1.5 block text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                  密码
+                </span>
+                <Input
+                  type="password"
+                  required
+                  minLength={mode === 'signup' ? MIN_PASSWORD_LENGTH : undefined}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={mode === 'signup' ? `至少 ${MIN_PASSWORD_LENGTH} 位` : '••••••••'}
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                />
+              </label>
               <Button type="submit" size="lg" fullWidth loading={isPending}>
-                {isPending ? '发送中…' : '发送魔法链接'}
+                {isPending
+                  ? mode === 'signup'
+                    ? '注册中…'
+                    : '登录中…'
+                  : mode === 'signup'
+                    ? '注册并登录'
+                    : '登录'}
               </Button>
             </form>
 
-            <div className="my-6 flex items-center gap-3 text-xs text-zinc-400">
-              <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
-              或
-              <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleApple}
-              disabled={isPending}
-              className="flex w-full items-center justify-center gap-2 rounded-field bg-black px-4 py-3.5 text-base font-semibold text-white shadow-card transition duration-150 ease-smooth hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
-            >
-              <AppleLogo />
-              使用 Apple 登录
-            </button>
+            {/* 登录 / 注册切换 */}
+            <p className="mt-4 text-center text-sm text-zinc-500 dark:text-zinc-400">
+              {mode === 'signin' ? '还没有账户？' : '已有账户？'}{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
+                  setErrorMsg('');
+                }}
+                className="font-semibold text-brand hover:underline"
+              >
+                {mode === 'signin' ? '注册' : '去登录'}
+              </button>
+            </p>
 
             {errorMsg && (
               <p
@@ -173,11 +264,37 @@ function LoginForm() {
                 {errorMsg}
               </p>
             )}
+
+            {/* —— 次要登录方式：魔法链接 + Apple（折叠） —— */}
+            <details className="mt-8 text-sm">
+              <summary className="cursor-pointer select-none text-center text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-300">
+                其他登录方式
+              </summary>
+              <div className="mt-5 space-y-3">
+                <button
+                  type="button"
+                  onClick={handleMagicLink}
+                  disabled={isPending}
+                  className="flex w-full items-center justify-center gap-2 rounded-field border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-700 shadow-sm transition duration-150 ease-smooth hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
+                >
+                  邮箱魔法链接登录
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApple}
+                  disabled={isPending}
+                  className="flex w-full items-center justify-center gap-2 rounded-field bg-black px-4 py-3 text-sm font-semibold text-white shadow-card transition duration-150 ease-smooth hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                >
+                  <AppleLogo />
+                  使用 Apple 登录
+                </button>
+              </div>
+            </details>
           </>
         )}
 
         <p className="mt-10 text-center text-xs text-zinc-400 dark:text-zinc-600">
-          首次登录将自动创建账户
+          {mode === 'signup' ? '注册即表示同意创建账户' : '登录即表示同意继续使用'}
         </p>
       </div>
     </main>

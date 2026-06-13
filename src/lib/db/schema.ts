@@ -54,14 +54,17 @@ export const EMBEDDING_DIMENSIONS = 1536;
 
 // ============ users：自建鉴权主表（取代 Supabase auth.users） ============
 // 与 auth.users 的差异：
-//   - 仅保留业务必需列：id / email / apple_sub / created_at（不含密码哈希、第三方 metadata 等）；
-//   - email 唯一（magic link 登录主键）；apple_sub 唯一（Apple 登录 subject，可空）。
+//   - 业务必需列：id / email / apple_sub / password_hash / created_at；
+//   - email 唯一（密码登录 / magic link 主键）；apple_sub 唯一（Apple 登录 subject，可空）。
+//   - password_hash 可空：邮箱+密码登录用 bcrypt 哈希（cost=12）；老魔法链接 / Apple 用户为 null。
 export const users = pgTable(
   'users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     email: text('email'),
     appleSub: text('apple_sub'),
+    // bcrypt 密码哈希（永不存明文）；可空：仅邮箱+密码用户有值。
+    passwordHash: text('password_hash'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

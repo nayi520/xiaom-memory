@@ -18,8 +18,13 @@
 
 import NextAuth, { type NextAuthConfig } from 'next-auth';
 import Apple from 'next-auth/providers/apple';
+import Credentials from 'next-auth/providers/credentials';
+import { eq } from 'drizzle-orm';
 import { DrizzleMinimalAdapter } from './adapter';
 import { directMailProvider } from './email';
+import { verifyPassword, isValidEmail } from './password';
+import { getDb } from '@/lib/db/client';
+import { users } from '@/lib/db/schema';
 
 /**
  * Auth.js 配置对象。
@@ -47,6 +52,40 @@ export const authConfig: NextAuthConfig = {
   },
 
   providers: [
+    // ============ 邮箱 + 密码（主登录方式，V1） ============
+    // authorize：按 email 查 user → bcrypt.compare 校验 password_hash → 通过返回 {id,email}。
+    // 返回的 user 进入 jwt callback 注入 uid（沿用现有 jwt/session 注入逻辑）。
+    // 安全：任一失败（用户不存在 / 无密码 / 密码错）一律返回 null，不区分原因、不打印密码。
+    Credentials({
+      id: 'credentials',
+      name: 'Email & Password',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(raw) {
+        const email = typeof raw?.email === 'string' ? raw.email.trim().toLowerCase() : '';
+        const password = typeof raw?.password === 'string' ? raw.password : '';
+        // 基本输入校验：邮箱格式 + 密码非空（长度策略在注册端强制）。
+        if (!isValidEmail(email) || !password) return null;
+
+        const db = getDb();
+        // 直接查库取 password_hash（adapter.toAdapterUser 不暴露哈希）。
+        const [row] = await db
+          .select({ id: users.id, email: users.email, passwordHash: users.passwordHash })
+          .from(users)
+          .where(eq(users.email, email))
+          .limit(1);
+        if (!row) return null;
+
+        const ok = await verifyPassword(password, row.passwordHash);
+        if (!ok) return null;
+
+        // 仅返回稳定 id + email；jwt callback 据 user.id 注入 token.uid。
+        return { id: row.id, email: row.email ?? email };
+      },
+    }),
+
     // ============ Email magic link（DirectMail 发信，无 nodemailer） ============
     directMailProvider(),
 

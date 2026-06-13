@@ -16,9 +16,10 @@ import { auth } from '@/lib/auth/edge';
  *  - /login：登录页
  *  - /auth：历史路径占位（旧 Supabase 回调已删，保留前缀避免误拦截）
  *  - /api/auth：Auth.js 端点（magic link 回调 / session / csrf / signout 等）
+ *  - /api/register：邮箱+密码注册（未登录态调用，自行做输入校验 + 限频）
  *  - /api/cron：用 Bearer CRON_SECRET 自行鉴权
  */
-const PUBLIC_PATHS = ['/login', '/auth', '/api/auth', '/api/cron'];
+const PUBLIC_PATHS = ['/login', '/auth', '/api/auth', '/api/register', '/api/cron'];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
