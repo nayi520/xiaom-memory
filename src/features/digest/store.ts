@@ -9,7 +9,8 @@
  * 调用方（digest/index、api/cron/digest、api/digest/run）已同步更新。
  */
 
-import { and, asc, desc, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, lte, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import type { Database } from '@/lib/db/client';
 import {
   cards,
@@ -29,6 +30,12 @@ import type {
   MatchedConcept,
   NewCard,
 } from './pipeline';
+import type {
+  WeeklyStore,
+  WeeklyConceptRow,
+  WeeklyLinkRow,
+  WeeklyDigestRecord,
+} from './weekly';
 
 /** vector(1536) 的 pgvector 文本表示：'[a,b,c]' */
 function toVectorLiteral(embedding: number[]): string {
@@ -47,7 +54,7 @@ type MatchRow = {
   [key: string]: unknown;
 };
 
-export function createDigestStore(db: Database): DigestStore {
+export function createDigestStore(db: Database): DigestStore & WeeklyStore {
   return {
     async listUserIdsWithInbox(fromIso, toIso) {
       const rows = await db
@@ -243,6 +250,91 @@ export function createDigestStore(db: Database): DigestStore {
           target: [digests.userId, digests.type, digests.period],
           set: { contentMd },
         });
+    },
+
+    // ============ 周报（WeeklyStore）============
+
+    async listDailyDigestsInRange(userId, fromPeriod, toPeriod) {
+      // period 为 'YYYY-MM-DD' 字符串，字典序即时间序，可直接 between。
+      const rows = await db
+        .select({ period: digests.period, contentMd: digests.contentMd })
+        .from(digests)
+        .where(
+          and(
+            eq(digests.userId, userId),
+            eq(digests.type, 'daily'),
+            gte(digests.period, fromPeriod),
+            lte(digests.period, toPeriod)
+          )
+        )
+        .orderBy(asc(digests.period));
+      return rows;
+    },
+
+    async listConceptsInRange(userId, fromIso, toIso): Promise<WeeklyConceptRow[]> {
+      const rows = await db
+        .select({
+          name: concepts.name,
+          domain: concepts.domain,
+          topic: concepts.topic,
+          explanation: concepts.summary,
+        })
+        .from(concepts)
+        .where(
+          and(
+            eq(concepts.userId, userId),
+            gte(concepts.createdAt, new Date(fromIso)),
+            lt(concepts.createdAt, new Date(toIso))
+          )
+        )
+        .orderBy(asc(concepts.createdAt));
+      return rows;
+    },
+
+    async listLinksInRange(userId, fromIso, toIso): Promise<WeeklyLinkRow[]> {
+      // 取本周新建关联，并 join 两端概念名（均限定本人概念，防跨用户泄漏）。
+      const ca = alias(concepts, 'ca');
+      const cb = alias(concepts, 'cb');
+      const rows = await db
+        .select({
+          from: ca.name,
+          to: cb.name,
+          relationType: conceptLinks.relationType,
+          reason: conceptLinks.reason,
+        })
+        .from(conceptLinks)
+        .innerJoin(ca, eq(ca.id, conceptLinks.conceptA))
+        .innerJoin(cb, eq(cb.id, conceptLinks.conceptB))
+        .where(
+          and(
+            eq(ca.userId, userId),
+            eq(cb.userId, userId),
+            gte(conceptLinks.createdAt, new Date(fromIso)),
+            lt(conceptLinks.createdAt, new Date(toIso))
+          )
+        )
+        .orderBy(asc(conceptLinks.createdAt));
+      return rows;
+    },
+
+    async saveWeeklyDigest(userId, period, contentMd) {
+      await db
+        .insert(digests)
+        .values({ userId, type: 'weekly', period, contentMd })
+        .onConflictDoUpdate({
+          target: [digests.userId, digests.type, digests.period],
+          set: { contentMd },
+        });
+    },
+
+    async getLatestWeeklyDigest(userId): Promise<WeeklyDigestRecord | null> {
+      const rows = await db
+        .select({ period: digests.period, content: digests.contentMd })
+        .from(digests)
+        .where(and(eq(digests.userId, userId), eq(digests.type, 'weekly')))
+        .orderBy(desc(digests.period))
+        .limit(1);
+      return rows[0] ?? null;
     },
   };
 }

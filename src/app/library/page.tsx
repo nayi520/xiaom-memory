@@ -177,11 +177,34 @@ export default async function LibraryPage({ searchParams }: Props) {
 function Shell({ q, children }: { q: string; children: React.ReactNode }) {
   return (
     <PageShell width="wide">
-      <header className="mb-4">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-          知识库
-        </h1>
-        <p className="mt-1 text-sm text-zinc-400">AI 整理后的概念，按领域 › 主题 › 概念下钻</p>
+      <header className="mb-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+            知识库
+          </h1>
+          <p className="mt-1 text-sm text-zinc-400">AI 整理后的概念，按领域 › 主题 › 概念下钻</p>
+        </div>
+        <Link
+          href="/ask"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-field border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-brand hover:text-brand dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+        >
+          <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]" aria-hidden>
+            <path
+              d="M12 3a9 9 0 1 0 4.5 16.8L21 21l-1.2-4.5A9 9 0 0 0 12 3Z"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M9.5 9.2a2.5 2.5 0 0 1 4.9.6c0 1.7-2.4 2-2.4 3.4"
+              stroke="currentColor"
+              strokeWidth="1.7"
+              strokeLinecap="round"
+            />
+            <circle cx="12" cy="16.3" r="0.9" fill="currentColor" />
+          </svg>
+          问知识库
+        </Link>
       </header>
 
       <form action="/library" method="get" className="mb-5">

@@ -190,6 +190,78 @@ export function buildP4Prompt(vars: P4Vars): string {
   return inject(P4_TEMPLATE, { ...vars });
 }
 
+// ============ P5 每周知识周报 ============
+// 模型建议：Haiku ｜ 触发：每周手动/定时汇总本周 daily digests + 新概念 ｜ 输出 Markdown（非 JSON）
+
+const P5_TEMPLATE = `把用户本周的知识记录汇总成一份「本周知识周报」。
+
+<本周范围>
+{{week_label}}（{{week_start}} 至 {{week_end}}）
+</本周范围>
+
+<本周每日简报>
+{{daily_digests_md}}   // 本周每天的日报 Markdown 拼接（可能不全 7 天，按实有天数）
+</本周每日简报>
+
+<本周新概念>
+{{concepts_json}}   // 本周新增概念 [{name, domain, topic, explanation}]，可能为空数组
+</本周新概念>
+
+<本周发现的关联>
+{{links_json}}   // 本周新增的概念关联 [{from, to, relation_type, reason}]，可能为空数组
+</本周发现的关联>
+
+输出 Markdown 周报，≤500 字，结构：
+- 以「## 本周回顾」开头，一段话总结本周关注的主题与脉络
+- 「### 关键概念」：本周值得记住的概念列表（名称 + 一句话），按重要性挑 3-8 个，宁缺毋滥
+- 如有跨概念关联，用「### 串联起来」小节，以用户视角点出「你这周的 A 和 B 其实……」
+- 结尾「### 下周可留意」：基于本周脉络给一句温和的延伸建议（不强加任务）
+
+语气：像一位安静的图书管理员，客观、克制，不灌鸡汤、不夸张。
+如果本周几乎没有内容，就如实写一句「这周记录不多」，不要硬凑。`;
+
+export interface P5Vars {
+  week_label: string;
+  week_start: string;
+  week_end: string;
+  daily_digests_md: string;
+  concepts_json: string;
+  links_json: string;
+}
+
+export function buildP5Prompt(vars: P5Vars): string {
+  return inject(P5_TEMPLATE, { ...vars });
+}
+
+// ============ P6 知识库问答（RAG，基于检索作答） ============
+// 模型建议：Sonnet ｜ 触发：用户在问答页提问，先 embedding 召回 top-K 概念 ｜ 输出 Markdown（非 JSON）
+
+const P6_TEMPLATE = `你是「小M」的知识库问答助手。用户向自己的个人知识库提了一个问题。
+请**只依据下面检索到的资料**作答，资料来自用户自己过去记录、并由 AI 整理出的概念。
+
+<用户的问题>
+{{question}}
+</用户的问题>
+
+<检索到的资料>
+{{context}}   // 形如「[1] 概念名：解释（相关记录摘要）」的若干条，按相关度排序；可能为空
+</检索到的资料>
+
+作答要求（严格遵守）：
+- **只用上面的资料作答，不得使用资料之外的常识或编造**。资料能回答到什么程度，就答到什么程度。
+- 在引用具体内容处用 [1] [2] 这样的角标标出来源，对应资料编号。
+- 如果检索资料为空，或资料与问题无关、不足以回答，就**直接说明「你的知识库里暂时没有相关记录」**，可顺带建议用户去记录相关内容，**不要编造答案，也不要泛泛而谈**。
+- 用简体中文，Markdown 格式，简洁清晰；不要复述这些规则，不要输出「根据资料」之类的元话术开场白。`;
+
+export interface P6Vars {
+  question: string;
+  context: string;
+}
+
+export function buildP6Prompt(vars: P6Vars): string {
+  return inject(P6_TEMPLATE, { ...vars });
+}
+
 // ============ P7 语音转写后清洗 ============
 // 模型建议：Haiku ｜ 触发：Whisper 转写之后、P1 之前 ｜ 输出纯文本
 

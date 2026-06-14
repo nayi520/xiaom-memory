@@ -2,4 +2,5 @@
 // 分类 / 标签 / 摘要 / 概念提炼 / 卡片生成 / 关联发现 / 日报
 export * from './prompts';
 export * from './pipeline';
+export * from './weekly';
 export { createDigestStore } from './store';

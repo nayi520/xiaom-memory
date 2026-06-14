@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import DigestNowButton from '@/features/digest/components/DigestNowButton';
+import WeeklyDigestPanel from '@/features/digest/components/WeeklyDigestPanel';
 import PushToggle from '@/features/review/components/PushToggle';
 import ReminderTimePicker from '@/features/review/components/ReminderTimePicker';
 import { PageShell, SectionTitle, cardClass, cn } from '@/components/ui';
@@ -21,6 +22,14 @@ export default function SettingsPage() {
           系统每晚 23:00（北京时间）自动整理当天记录。也可以现在手动触发。
         </p>
         <DigestNowButton />
+      </section>
+
+      <section className="mt-9 space-y-2.5">
+        <SectionTitle className="mb-1">本周周报</SectionTitle>
+        <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+          把本周的每日整理与新概念汇总成一份知识周报。可随时手动生成、查看最新一期。
+        </p>
+        <WeeklyDigestPanel />
       </section>
 
       <section className="mt-9 space-y-3">
