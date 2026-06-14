@@ -3,6 +3,11 @@
  * 领域 → 主题 → 概念 → 原始记录 四层下钻（后两层在概念详情页），每层显示数量。
  * 顶部单一搜索框：关键词 ILIKE + 标签精确 + pgvector 语义，合并去重标注来源。
  * 下钻状态用 searchParams 表达（?domain=&topic=），移动端返回手势/返回键天然可用。
+ *
+ * 响应式：
+ *   移动（< lg）：单列下钻——根层显示领域卡片，再逐层进入主题/概念，配合面包屑返回。
+ *   桌面（lg+） ：主从双栏——左侧常驻「领域」导航面板（当前领域高亮），右侧显示该领域下的
+ *                 主题 / 概念列表；横向空间得到利用，不再是手机窄列居中。
  */
 
 import Link from 'next/link';
@@ -37,6 +42,12 @@ interface ConceptRow {
   created_at: string;
 }
 
+interface DomainSummary {
+  name: string;
+  topics: number;
+  concepts: number;
+}
+
 interface Props {
   searchParams: { q?: string; domain?: string; topic?: string };
 }
@@ -54,7 +65,7 @@ export default async function LibraryPage({ searchParams }: Props) {
       ? await runLibrarySearch(db, user.id, q)
       : { hits: [], semanticUsed: false };
     return (
-      <Shell q={q}>
+      <Shell q={q} domains={[]} activeDomain={null}>
         <SearchResults q={q} hits={result.hits} semanticUsed={result.semanticUsed} />
       </Shell>
     );
@@ -63,7 +74,7 @@ export default async function LibraryPage({ searchParams }: Props) {
   // 未登录：空库（中间件已会拦截，这里仅类型与降级兜底）
   if (!user) {
     return (
-      <Shell q={q}>
+      <Shell q={q} domains={[]} activeDomain={null}>
         <DrillList empty="请先登录。" items={[]} />
       </Shell>
     );
@@ -106,11 +117,26 @@ export default async function LibraryPage({ searchParams }: Props) {
   const domainOf = (c: ConceptRow) => c.domain?.trim() || UNCATEGORIZED;
   const topicOf = (c: ConceptRow) => c.topic?.trim() || UNCATEGORIZED;
 
+  // ---- 领域汇总（桌面左栏常驻 + 根层卡片共用） ----
+  const domainMap = new Map<string, { topics: Set<string>; concepts: number }>();
+  for (const c of concepts) {
+    const d = domainOf(c);
+    if (!domainMap.has(d)) domainMap.set(d, { topics: new Set(), concepts: 0 });
+    const entry = domainMap.get(d)!;
+    entry.topics.add(topicOf(c));
+    entry.concepts += 1;
+  }
+  const domains: DomainSummary[] = Array.from(domainMap.entries()).map(([name, info]) => ({
+    name,
+    topics: info.topics.size,
+    concepts: info.concepts,
+  }));
+
   // ---- 第三层：概念列表 ----
   if (domain && topic) {
     const list = concepts.filter((c) => domainOf(c) === domain && topicOf(c) === topic);
     return (
-      <Shell q={q}>
+      <Shell q={q} domains={domains} activeDomain={domain}>
         <Breadcrumb
           parts={[
             { label: domain, href: `/library?domain=${encodeURIComponent(domain)}` },
@@ -140,7 +166,7 @@ export default async function LibraryPage({ searchParams }: Props) {
       topics.set(t, (topics.get(t) ?? 0) + 1);
     }
     return (
-      <Shell q={q}>
+      <Shell q={q} domains={domains} activeDomain={domain}>
         <Breadcrumb parts={[{ label: domain }]} />
         <DrillList
           empty="该领域下还没有主题"
@@ -156,40 +182,60 @@ export default async function LibraryPage({ searchParams }: Props) {
     );
   }
 
-  // ---- 第一层：领域列表 ----
-  const domains = new Map<string, { topics: Set<string>; concepts: number }>();
-  for (const c of concepts) {
-    const d = domainOf(c);
-    if (!domains.has(d)) domains.set(d, { topics: new Set(), concepts: 0 });
-    const entry = domains.get(d)!;
-    entry.topics.add(topicOf(c));
-    entry.concepts += 1;
-  }
+  // ---- 第一层：领域列表（移动端卡片；桌面端左栏已列出领域，右侧给引导） ----
   return (
-    <Shell q={q}>
-      <DrillList
-        empty="知识库还是空的——先去记点东西，AI 整理后会自动归类到这里。"
-        items={Array.from(domains.entries()).map(([d, info]) => ({
-          key: d,
-          href: `/library?domain=${encodeURIComponent(d)}`,
-          title: d,
-          subtitle: `${info.topics.size} 个主题`,
-          count: info.concepts,
-          unit: '个概念',
-        }))}
-      />
+    <Shell q={q} domains={domains} activeDomain={null}>
+      {/* 桌面：未选领域时，右侧给一条引导（左栏已是完整领域列表，避免重复罗列） */}
+      <div className="hidden lg:block">
+        {domains.length === 0 ? (
+          <DrillList
+            empty="知识库还是空的——先去记点东西，AI 整理后会自动归类到这里。"
+            items={[]}
+          />
+        ) : (
+          <EmptyState
+            icon={<LibraryIcon aria-hidden className="h-7 w-7" />}
+            title="选择一个领域"
+            description="从左侧选择领域，查看其下的主题与概念。"
+          />
+        )}
+      </div>
+      {/* 移动：领域卡片网格（保持原下钻入口） */}
+      <div className="lg:hidden">
+        <DrillList
+          empty="知识库还是空的——先去记点东西，AI 整理后会自动归类到这里。"
+          items={domains.map((d) => ({
+            key: d.name,
+            href: `/library?domain=${encodeURIComponent(d.name)}`,
+            title: d.name,
+            subtitle: `${d.topics} 个主题`,
+            count: d.concepts,
+            unit: '个概念',
+          }))}
+        />
+      </div>
     </Shell>
   );
 }
 
-// ============ 布局壳：标题 + 搜索框 ============
+// ============ 布局壳：标题 + 搜索框 + 桌面领域左栏 ============
 
-function Shell({ q, children }: { q: string; children: React.ReactNode }) {
+function Shell({
+  q,
+  domains,
+  activeDomain,
+  children,
+}: {
+  q: string;
+  domains: DomainSummary[];
+  activeDomain: string | null;
+  children: React.ReactNode;
+}) {
   return (
-    <PageShell width="wide">
-      <header className="mb-4 flex items-start justify-between gap-3">
+    <PageShell width="full">
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-3 lg:mb-6">
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900 lg:text-3xl dark:text-zinc-50">
             知识库
           </h1>
           <p className="mt-1 text-sm text-zinc-400">AI 整理后的概念，按领域 › 主题 › 概念下钻</p>
@@ -212,7 +258,7 @@ function Shell({ q, children }: { q: string; children: React.ReactNode }) {
         </div>
       </header>
 
-      <form action="/library" method="get" className="mb-5">
+      <form action="/library" method="get" className="mb-5 lg:max-w-xl">
         <div className="relative">
           <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-zinc-400">
             <SearchIcon aria-hidden className="h-[18px] w-[18px]" />
@@ -228,8 +274,57 @@ function Shell({ q, children }: { q: string; children: React.ReactNode }) {
         </div>
       </form>
 
-      <div className="flex-1">{children}</div>
+      {/* 搜索态不分栏（结果占满）；下钻态在桌面用「领域左栏 + 内容」主从布局。 */}
+      {q || domains.length === 0 ? (
+        <div className="flex-1">{children}</div>
+      ) : (
+        <div className="flex-1 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-8">
+          <DomainRail domains={domains} active={activeDomain} />
+          <div className="min-w-0">{children}</div>
+        </div>
+      )}
     </PageShell>
+  );
+}
+
+// ============ 桌面领域左栏（常驻，当前领域高亮） ============
+
+function DomainRail({ domains, active }: { domains: DomainSummary[]; active: string | null }) {
+  return (
+    <nav aria-label="领域" className="hidden lg:block">
+      <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+        领域 · {domains.length}
+      </p>
+      <ul className="space-y-1">
+        {domains.map((d) => {
+          const isActive = active === d.name;
+          return (
+            <li key={d.name}>
+              <Link
+                href={`/library?domain=${encodeURIComponent(d.name)}`}
+                aria-current={isActive ? 'page' : undefined}
+                className={cn(
+                  'group flex items-center justify-between gap-2 rounded-field px-3 py-2.5 text-sm transition duration-150 ease-smooth focus-visible:outline-none',
+                  isActive
+                    ? 'bg-brand/10 font-semibold text-brand dark:bg-brand/15 dark:text-brand-100'
+                    : 'text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800/70 dark:hover:text-zinc-100'
+                )}
+              >
+                <span className="truncate">{d.name}</span>
+                <span
+                  className={cn(
+                    'shrink-0 tabular-nums text-xs',
+                    isActive ? 'text-brand/70 dark:text-brand-100/70' : 'text-zinc-400'
+                  )}
+                >
+                  {d.concepts}
+                </span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
   );
 }
 
@@ -263,7 +358,7 @@ function Breadcrumb({ parts }: { parts: { label: string; href?: string }[] }) {
   );
 }
 
-// ============ 下钻列表（大点击区，单手友好） ============
+// ============ 下钻列表（大点击区，单手友好；桌面多列网格利用横向空间） ============
 
 interface DrillItem {
   key: string;
@@ -285,7 +380,7 @@ function DrillList({ items, empty }: { items: DrillItem[]; empty: string }) {
     );
   }
   return (
-    <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+    <ul className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
       {items.map((item) => (
         <li key={item.key}>
           <Link

@@ -5,58 +5,33 @@
  * 复习 tab 带今日到期 badge（原 header 复习入口整合至此）。
  * /login、/auth 不显示。
  *
- * 视觉升级：玻璃拟态底栏 + 顶部细分隔；选中项有品牌色指示条 + 图标抬升；
- * 桌面端 hover 反馈；图标统一用 lucide（线性风格，与全站一致），选中时加粗描边。
+ * 仅移动 / 平板（< lg）显示：桌面端用常驻侧栏 SidebarNav 导航，底栏以 lg:hidden 隐去。
+ * 导航项与角标数据与侧栏共用同一事实源（nav-items / useDueCount），两端始终一致。
+ *
+ * 视觉：玻璃拟态底栏 + 顶部细分隔；选中项有品牌色指示条 + 图标抬升；图标统一用 lucide。
  */
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { Pencil, BookOpenCheck, Library, Settings } from 'lucide-react';
-import type { LucideIcon } from '@/components/ui';
 import { cn } from '@/components/ui/cn';
-
-const TABS: { href: string; label: string; Icon: LucideIcon }[] = [
-  { href: '/', label: '记录', Icon: Pencil },
-  { href: '/review', label: '复习', Icon: BookOpenCheck },
-  { href: '/library', label: '知识库', Icon: Library },
-  { href: '/settings', label: '设置', Icon: Settings },
-];
+import { PRIMARY_NAV, isNavActive } from './nav-items';
+import { useDueCount } from './useDueCount';
 
 export default function BottomNav() {
   const pathname = usePathname();
   const hidden = pathname.startsWith('/login') || pathname.startsWith('/auth');
-  const [due, setDue] = useState(0);
-
-  useEffect(() => {
-    if (hidden) return;
-    let cancelled = false;
-    fetch('/api/review/due')
-      .then((res) => (res.ok ? res.json() : { due: 0 }))
-      .then((data: { due?: number }) => {
-        if (!cancelled && typeof data.due === 'number') setDue(data.due);
-      })
-      .catch(() => {
-        /* 网络错误：badge 维持 0，不打扰 */
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [hidden, pathname]);
+  const due = useDueCount();
 
   if (hidden) return null;
-
-  const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href);
 
   return (
     <nav
       aria-label="主导航"
-      className="glass fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200/70 dark:border-zinc-800/70"
+      className="glass fixed inset-x-0 bottom-0 z-40 border-t border-zinc-200/70 lg:hidden dark:border-zinc-800/70"
     >
       <div className="mx-auto flex max-w-md">
-        {TABS.map(({ href, label, Icon }) => {
-          const active = isActive(href);
+        {PRIMARY_NAV.map(({ href, label, Icon, badge }) => {
+          const active = isNavActive(pathname, href);
           return (
             <Link
               key={href}
@@ -87,7 +62,7 @@ export default function BottomNav() {
                   className="h-[22px] w-[22px]"
                   strokeWidth={active ? 2.2 : 1.8}
                 />
-                {href === '/review' && due > 0 && (
+                {badge === 'due' && due > 0 && (
                   <span className="absolute -right-2.5 -top-1.5 inline-flex min-w-[1.05rem] items-center justify-center rounded-full bg-brand px-1 py-px text-[9px] font-bold leading-none text-white shadow-sm ring-2 ring-white dark:ring-zinc-900">
                     {due > 99 ? '99+' : due}
                   </span>

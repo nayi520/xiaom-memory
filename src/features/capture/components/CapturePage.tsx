@@ -77,54 +77,66 @@ export default function CapturePage() {
   const handlers = { addOptimistic, confirmNote, updateNote, failNote };
 
   return (
-    <PageShell>
-      <header className="mb-5 flex items-center justify-between">
+    <PageShell width="wide">
+      <header className="mb-5 flex items-center justify-between lg:mb-8">
         <div className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-dark text-sm font-bold text-white shadow-card">
+          {/* 字标在桌面已由侧栏承担品牌，这里仅移动端显示，避免重复 */}
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand to-brand-dark text-sm font-bold text-white shadow-card lg:hidden">
             小M
           </span>
           <div>
-            <h1 className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+            <h1 className="text-xl font-bold tracking-tight text-zinc-900 lg:text-3xl dark:text-zinc-50">
               记录此刻
             </h1>
-            <p className="text-xs text-zinc-400">想留住的，先记下来</p>
+            <p className="text-xs text-zinc-400 lg:mt-1 lg:text-sm">想留住的，先记下来</p>
           </div>
         </div>
       </header>
 
-      {/* 记录类型分段切换（底部 tab 栏让位给全局导航） */}
-      <div
-        role="tablist"
-        aria-label="记录类型"
-        className="mb-5 flex gap-1 rounded-field bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
-      >
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            role="tab"
-            aria-selected={tab === t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              'flex flex-1 items-center justify-center gap-1.5 rounded-[0.625rem] py-2.5 text-sm transition duration-200 ease-smooth focus-visible:outline-none',
-              tab === t.key
-                ? 'bg-white font-semibold text-brand shadow-card dark:bg-zinc-900'
-                : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'
-            )}
+      {/* 桌面双栏：左侧捕获区 / 右侧最近记录流；移动端单列堆叠（最近记录在下）。 */}
+      <div className="flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-8">
+        <div>
+          {/* 记录类型分段切换（底部 tab 栏让位给全局导航） */}
+          <div
+            role="tablist"
+            aria-label="记录类型"
+            className="mb-5 flex gap-1 rounded-field bg-zinc-100/80 p-1 dark:bg-zinc-800/80"
           >
-            <t.Icon aria-hidden className="h-[18px] w-[18px]" />
-            {t.label}
-          </button>
-        ))}
-      </div>
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 rounded-[0.625rem] py-2.5 text-sm transition duration-200 ease-smooth focus-visible:outline-none',
+                  tab === t.key
+                    ? 'bg-white font-semibold text-brand shadow-card dark:bg-zinc-900'
+                    : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'
+                )}
+              >
+                <t.Icon aria-hidden className="h-[18px] w-[18px]" />
+                {t.label}
+              </button>
+            ))}
+          </div>
 
-      <div className="flex-1">
-        <div key={tab} className="animate-fade-in">
-          {tab === 'text' && <TextCapture {...handlers} />}
-          {tab === 'voice' && <VoiceCapture {...handlers} />}
-          {tab === 'link' && <LinkCapture {...handlers} />}
+          <div key={tab} className="animate-fade-in">
+            {tab === 'text' && <TextCapture {...handlers} />}
+            {tab === 'voice' && <VoiceCapture {...handlers} />}
+            {tab === 'link' && <LinkCapture {...handlers} />}
+          </div>
+
+          {/* 移动端：最近记录在捕获区下方 */}
+          <div className="lg:hidden">
+            <RecentNotes items={recent} onTrash={removeNote} />
+          </div>
         </div>
 
-        <RecentNotes items={recent} onTrash={removeNote} />
+        {/* 桌面端：最近记录作为右栏常驻 */}
+        <aside className="hidden lg:block">
+          <RecentNotes items={recent} onTrash={removeNote} keepWhenEmpty />
+        </aside>
       </div>
     </PageShell>
   );

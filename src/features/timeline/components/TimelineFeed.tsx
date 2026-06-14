@@ -112,8 +112,8 @@ export default function TimelineFeed() {
 
   if (phase === 'loading') {
     return (
-      <ul className="space-y-2.5">
-        {Array.from({ length: 4 }).map((_, i) => (
+      <ul className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
+        {Array.from({ length: 6 }).map((_, i) => (
           <li
             key={i}
             className="h-20 animate-pulse rounded-card border border-zinc-200/80 bg-white dark:border-zinc-800 dark:bg-zinc-900"
@@ -150,7 +150,7 @@ export default function TimelineFeed() {
 
   return (
     <>
-      <ul className="space-y-2.5">
+      <ul className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
         {notes.map((note) => {
           const badge = STATUS_BADGE[note.status];
           return (

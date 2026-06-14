@@ -1,14 +1,22 @@
 /**
- * 全站页面外壳 —— 统一移动/桌面布局节奏。
+ * 全站页面外壳 —— 统一移动/桌面布局节奏，与响应式 AppShell（侧栏 + 内容区）配套。
  *
- * 设计取舍：这是「移动优先」的单列阅读应用，桌面端不强行铺满（多列会破坏专注捕获/复习的体验），
- * 而是给一个舒适的阅读宽度并在大屏拉开上下留白、增大水平内边距，使其看起来是「为大屏排过版」
- * 而非「手机布局拉伸居中」。底部留白为全局底栏（h≈4rem + 安全区）让位。
+ * 移动（< lg）：单列、舒适阅读宽度居中，底部为全局底栏让位（pb-28）。与改版前一致。
+ * 桌面（lg+） ：在侧栏右侧的内容区里铺开——更大的水平/顶部内边距、更挺括的最大宽度，
+ *               不再是「手机窄列居中」。底栏在桌面隐藏，故桌面去掉底部多余留白。
  *
- * - max-w-content（640px）：比原来的 max-w-lg（512px）更宽松，桌面更挺括。
- * - sm: 起更大的水平/顶部内边距；底部固定为底栏让位。
+ * width 取值（仅影响桌面最大宽度，移动端始终单列）：
+ *   - content：常规阅读页（捕获 / 问答 / 设置 / 详情）。桌面给舒适阅读宽度，不铺满。
+ *   - wide   ：列表 / 多栏页（知识库 / 时间线）。桌面更宽，利用横向空间。
+ *   - full   ：自管布局页（如知识库主从双栏）。不限宽，仅给内边距，由页面自行分栏。
  */
 import { cn } from './cn';
+
+const WIDTHS = {
+  content: 'max-w-content lg:max-w-3xl',
+  wide: 'max-w-2xl lg:max-w-5xl',
+  full: 'max-w-none',
+} as const;
 
 export default function PageShell({
   children,
@@ -17,14 +25,14 @@ export default function PageShell({
 }: {
   children: React.ReactNode;
   className?: string;
-  /** content：常规单列；wide：库/列表类可略宽。 */
-  width?: 'content' | 'wide';
+  width?: keyof typeof WIDTHS;
 }) {
   return (
     <main
       className={cn(
-        'mx-auto flex min-h-dvh w-full flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10',
-        width === 'wide' ? 'max-w-2xl' : 'max-w-content',
+        // 移动：单列居中 + 底栏让位；桌面：更大内边距、顶部留白，去掉底栏让位空白。
+        'mx-auto flex min-h-dvh w-full flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:px-10 lg:pb-12 lg:pt-12 xl:px-14',
+        WIDTHS[width],
         className
       )}
     >

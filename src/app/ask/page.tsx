@@ -12,11 +12,11 @@ export const metadata = { title: '问答 · 小M' };
 export default function AskPage() {
   return (
     <PageShell>
-      <header className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+      <header className="mb-5 lg:mb-7">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 lg:text-3xl dark:text-zinc-50">
           问知识库
         </h1>
-        <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 max-w-prose text-sm leading-relaxed text-zinc-500 lg:mt-2 lg:text-base dark:text-zinc-400">
           基于你记录并整理过的内容作答，并注明来源。库里没有的，它会如实说不知道，不会编造。
         </p>
       </header>

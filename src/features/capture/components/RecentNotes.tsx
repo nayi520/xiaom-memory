@@ -31,15 +31,25 @@ function timeAgo(iso: string): string {
 export default function RecentNotes({
   items,
   onTrash,
+  className,
+  /** 列表为空时是否仍渲染区块（桌面右栏常驻用），并显示占位提示。 */
+  keepWhenEmpty = false,
 }: {
   items: RecentItem[];
   onTrash?: (id: string) => void;
+  className?: string;
+  keepWhenEmpty?: boolean;
 }) {
-  if (items.length === 0) return null;
+  if (items.length === 0 && !keepWhenEmpty) return null;
 
   return (
-    <section className="mt-10">
+    <section className={cn('mt-10 lg:mt-0', className)}>
       <SectionTitle>最近记录</SectionTitle>
+      {items.length === 0 ? (
+        <p className="rounded-card border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-400 dark:border-zinc-800">
+          还没有记录，左侧记下第一条吧。
+        </p>
+      ) : (
       <ul className="space-y-2.5">
         {items.map((item) => (
           <li
@@ -104,6 +114,7 @@ export default function RecentNotes({
           </li>
         ))}
       </ul>
+      )}
     </section>
   );
 }

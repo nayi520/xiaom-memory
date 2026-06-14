@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import SwRegister from './sw-register';
 import BottomNav from '@/components/BottomNav';
+import AppShell from '@/components/AppShell';
 import { ThemeProvider, ToastProvider, themeInitScript } from '@/components/ui';
 
 export const metadata: Metadata = {
@@ -35,7 +36,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <ToastProvider>
-            {children}
+            <AppShell>{children}</AppShell>
             <BottomNav />
             <SwRegister />
           </ToastProvider>

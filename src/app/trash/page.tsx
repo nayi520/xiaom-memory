@@ -65,7 +65,7 @@ export default async function TrashPage() {
   }));
 
   return (
-    <PageShell>
+    <PageShell width="wide">
       <nav className="mb-4 flex items-center gap-1.5 text-sm text-zinc-400">
         <Link
           href="/settings"
@@ -77,11 +77,11 @@ export default async function TrashPage() {
         <span className="font-medium text-zinc-600 dark:text-zinc-300">回收站</span>
       </nav>
 
-      <header className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+      <header className="mb-5 lg:mb-7">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900 lg:text-3xl dark:text-zinc-50">
           回收站
         </h1>
-        <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+        <p className="mt-1 max-w-prose text-sm leading-relaxed text-zinc-400">
           移到回收站的记录不会出现在最近记录、知识库和搜索里。可恢复，或永久删除。
         </p>
       </header>
@@ -93,7 +93,7 @@ export default async function TrashPage() {
           description="删除的记录会出现在这里，随时可以恢复。"
         />
       ) : (
-        <ul className="space-y-2.5">
+        <ul className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
           {trashedNotes.map((note) => (
             <li
               key={note.id}
