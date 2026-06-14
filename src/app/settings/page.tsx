@@ -4,6 +4,7 @@ import WeeklyDigestPanel from '@/features/digest/components/WeeklyDigestPanel';
 import PushToggle from '@/features/review/components/PushToggle';
 import ReminderTimePicker from '@/features/review/components/ReminderTimePicker';
 import StatsPanel from '@/features/settings/components/StatsPanel';
+import ProfileCard from '@/features/settings/components/ProfileCard';
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
 import {
   PageShell,
@@ -25,6 +26,12 @@ export default function SettingsPage() {
           设置
         </h1>
       </header>
+
+      {/* 个人资料：头像 + 显示名 + 邮箱（横跨整宽，置顶） */}
+      <section className="mb-9 space-y-2.5">
+        <SectionTitle className="mb-1">个人资料</SectionTitle>
+        <ProfileCard />
+      </section>
 
       {/* 数据统计：横跨整宽（四项计数在桌面铺成一行） */}
       <section className="space-y-2.5">

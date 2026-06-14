@@ -18,6 +18,7 @@ import { useEffect, useState } from 'react';
 import { signOut } from 'next-auth/react';
 import {
   useTheme,
+  Avatar,
   SunIcon,
   MoonIcon,
   SystemIcon,
@@ -160,33 +161,54 @@ function ThemeSwitch() {
   );
 }
 
-/** 账户行：展示当前邮箱 + 退出登录（client signOut，落地回 /login）。 */
+/** 账户行：头像 + 名字（无名回退邮箱）+ 退出登录（client signOut，落地回 /login）。 */
 function AccountRow() {
-  const [email, setEmail] = useState<string | null>(null);
+  const [me, setMe] = useState<{
+    email: string | null;
+    name: string | null;
+    avatarUrl: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     fetch('/api/me')
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { email?: string | null } | null) => {
-        if (!cancelled && data) setEmail(data.email ?? null);
-      })
+      .then(
+        (
+          data:
+            | { email?: string | null; name?: string | null; avatarUrl?: string | null }
+            | null
+        ) => {
+          if (!cancelled && data)
+            setMe({
+              email: data.email ?? null,
+              name: data.name ?? null,
+              avatarUrl: data.avatarUrl ?? null,
+            });
+        }
+      )
       .catch(() => {
-        /* 取不到邮箱：仅隐藏邮箱文本，退出按钮仍可用 */
+        /* 取不到资料：仅隐藏文本/头像回退占位，退出按钮仍可用 */
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // 主标题优先名字，回退邮箱；都没有时占位「已登录」。
+  const display = me?.name?.trim() || me?.email || '已登录';
+
   return (
     <div className="flex items-center gap-2 rounded-field px-2 py-1.5">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-semibold uppercase text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-        {(email?.[0] ?? '小').toUpperCase()}
-      </span>
+      <Avatar
+        src={me?.avatarUrl}
+        name={me?.name}
+        email={me?.email}
+        size={32}
+      />
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-medium text-zinc-700 dark:text-zinc-300">
-          {email ?? '已登录'}
+          {display}
         </span>
       </span>
       <button

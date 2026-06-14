@@ -22,6 +22,9 @@ import OSS from 'ali-oss';
 /** 音频对象 key 的统一前缀（取代旧 Supabase bucket 名 `audio`）。 */
 export const AUDIO_PREFIX = 'audio';
 
+/** 头像对象 key 的统一前缀（用户资料头像，私有 bucket，展示靠签名 URL）。 */
+export const AVATAR_PREFIX = 'avatars';
+
 /** 签名 URL 默认有效期：1 小时（与旧 createSignedUrl(path, 3600) 对齐）。 */
 export const DEFAULT_EXPIRES_SEC = 3600;
 
@@ -125,6 +128,50 @@ export async function uploadAudio(
   const client = makeClient();
   const ext = extFromContentType(contentType);
   const key = `${AUDIO_PREFIX}/${userId}/${randomUuid()}.${ext}`;
+
+  // ali-oss put 接收 Buffer；Uint8Array 统一包成 Buffer（零拷贝视图）。
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+
+  await client.put(key, buf, {
+    mime: contentType,
+    headers: { 'Content-Type': contentType },
+  });
+
+  return { key };
+}
+
+/**
+ * 头像 content-type → 文件扩展名。仅支持 png / jpeg / webp（与上传校验一致），未命中回退 bin。
+ * 与音频不同，头像类型受控（路由层已白名单校验），故映射表也只含这三种。
+ */
+function avatarExtFromContentType(contentType: string): string {
+  const ct = contentType.split(';')[0].trim().toLowerCase();
+  const map: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+  };
+  return map[ct] ?? 'bin';
+}
+
+/**
+ * 上传头像到 `avatars/{userId}/{uuid}.<ext>`，返回对象 key（写入 users.avatar_key）。
+ * 与 uploadAudio 同构：复用 makeClient / randomUuid，仅前缀与扩展名映射不同。
+ * 私有 bucket，展示一律用 getSignedUrl 现签（库里只存 key）。
+ *
+ * @param userId      当前用户 id（应用层鉴权得到，决定 key 前缀，隔离各用户）
+ * @param body        图片字节（Buffer 或 Uint8Array）
+ * @param contentType MIME 类型（image/png | image/jpeg | image/webp），决定扩展名与对象 Content-Type 头
+ */
+export async function uploadAvatar(
+  userId: string,
+  body: Buffer | Uint8Array,
+  contentType: string
+): Promise<{ key: string }> {
+  if (!userId) throw new Error('uploadAvatar: 缺少 userId');
+  const client = makeClient();
+  const ext = avatarExtFromContentType(contentType);
+  const key = `${AVATAR_PREFIX}/${userId}/${randomUuid()}.${ext}`;
 
   // ali-oss put 接收 Buffer；Uint8Array 统一包成 Buffer（零拷贝视图）。
   const buf = Buffer.isBuffer(body) ? body : Buffer.from(body.buffer, body.byteOffset, body.byteLength);

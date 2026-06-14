@@ -57,6 +57,8 @@ export const EMBEDDING_DIMENSIONS = 1536;
 //   - 业务必需列：id / email / apple_sub / password_hash / created_at；
 //   - email 唯一（密码登录 / magic link 主键）；apple_sub 唯一（Apple 登录 subject，可空）。
 //   - password_hash 可空：邮箱+密码登录用 bcrypt 哈希（cost=12）；老魔法链接 / Apple 用户为 null。
+//   - name / avatar_key：用户资料（显示名 + 头像）。avatar_key 是 OSS 私有对象 key
+//     （形如 `avatars/{userId}/{uuid}.<ext>`），展示时现签为临时 URL，不存公网地址；二者均可空。
 export const users = pgTable(
   'users',
   {
@@ -65,6 +67,10 @@ export const users = pgTable(
     appleSub: text('apple_sub'),
     // bcrypt 密码哈希（永不存明文）；可空：仅邮箱+密码用户有值。
     passwordHash: text('password_hash'),
+    // 显示用户名（可空，1–24 字符由应用层校验）。
+    name: text('name'),
+    // 头像在 OSS 的对象 key（私有 bucket，展示靠 getSignedUrl 现签）。可空：未设头像为 null。
+    avatarKey: text('avatar_key'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
