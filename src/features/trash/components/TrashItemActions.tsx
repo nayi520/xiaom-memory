@@ -9,17 +9,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui';
+import { Button, RestoreIcon, useToast } from '@/components/ui';
 
 export default function TrashItemActions({ noteId }: { noteId: string }) {
   const router = useRouter();
+  const { success, error: toastError } = useToast();
   const [busy, setBusy] = useState<null | 'restore' | 'purge'>(null);
   const [confirming, setConfirming] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function restore() {
     setBusy('restore');
-    setError(null);
     try {
       const res = await fetch(`/api/notes/${noteId}`, {
         method: 'PATCH',
@@ -28,31 +27,32 @@ export default function TrashItemActions({ noteId }: { noteId: string }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? `恢复失败（${res.status}）`);
+        toastError(data.error ?? `恢复失败（${res.status}）`);
         setBusy(null);
         return;
       }
+      success('已恢复到知识库');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '网络错误');
+      toastError(err instanceof Error ? err.message : '网络错误');
       setBusy(null);
     }
   }
 
   async function purge() {
     setBusy('purge');
-    setError(null);
     try {
       const res = await fetch(`/api/notes/${noteId}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? `永久删除失败（${res.status}）`);
+        toastError(data.error ?? `永久删除失败（${res.status}）`);
         setBusy(null);
         return;
       }
+      success('已永久删除');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '网络错误');
+      toastError(err instanceof Error ? err.message : '网络错误');
       setBusy(null);
     }
   }
@@ -67,15 +67,19 @@ export default function TrashItemActions({ noteId }: { noteId: string }) {
             loading={busy === 'restore'}
             disabled={busy !== null}
           >
-            {busy === 'restore' ? '恢复中…' : '↩️ 恢复'}
+            {busy === 'restore' ? (
+              '恢复中…'
+            ) : (
+              <>
+                <RestoreIcon aria-hidden className="h-3.5 w-3.5" />
+                恢复
+              </>
+            )}
           </Button>
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => {
-              setError(null);
-              setConfirming(true);
-            }}
+            onClick={() => setConfirming(true)}
             disabled={busy !== null}
           >
             永久删除
@@ -105,7 +109,6 @@ export default function TrashItemActions({ noteId }: { noteId: string }) {
           </div>
         </div>
       )}
-      {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
   );
 }

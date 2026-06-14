@@ -12,7 +12,17 @@ import { getDb } from '@/lib/db/client';
 import { concepts as conceptsTable, noteConcepts, notes } from '@/lib/db/schema';
 import { runLibrarySearch } from '@/features/library/search';
 import SearchResults from '@/features/library/components/SearchResults';
-import { PageShell, EmptyState, cardClass, cn } from '@/components/ui';
+import {
+  PageShell,
+  EmptyState,
+  LibraryIcon,
+  SearchIcon,
+  ClockIcon,
+  AskIcon,
+  ChevronRight,
+  cardClass,
+  cn,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '知识库 · 小M' };
@@ -187,39 +197,16 @@ function Shell({ q, children }: { q: string; children: React.ReactNode }) {
         <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/timeline"
-            className="inline-flex items-center gap-1.5 rounded-field border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-brand hover:text-brand dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            className="inline-flex items-center gap-1.5 rounded-field border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-brand hover:text-brand focus-visible:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
           >
-            <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]" aria-hidden>
-              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" />
-              <path
-                d="M12 7.5V12l3 1.8"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <ClockIcon aria-hidden className="h-[18px] w-[18px]" />
             时间线
           </Link>
           <Link
             href="/ask"
-            className="inline-flex items-center gap-1.5 rounded-field border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-brand hover:text-brand dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+            className="inline-flex items-center gap-1.5 rounded-field border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-brand hover:text-brand focus-visible:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
           >
-            <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]" aria-hidden>
-              <path
-                d="M12 3a9 9 0 1 0 4.5 16.8L21 21l-1.2-4.5A9 9 0 0 0 12 3Z"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinejoin="round"
-              />
-              <path
-                d="M9.5 9.2a2.5 2.5 0 0 1 4.9.6c0 1.7-2.4 2-2.4 3.4"
-                stroke="currentColor"
-                strokeWidth="1.7"
-                strokeLinecap="round"
-              />
-              <circle cx="12" cy="16.3" r="0.9" fill="currentColor" />
-            </svg>
+            <AskIcon aria-hidden className="h-[18px] w-[18px]" />
             问知识库
           </Link>
         </div>
@@ -228,10 +215,7 @@ function Shell({ q, children }: { q: string; children: React.ReactNode }) {
       <form action="/library" method="get" className="mb-5">
         <div className="relative">
           <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-zinc-400">
-            <svg viewBox="0 0 24 24" fill="none" className="h-[18px] w-[18px]" aria-hidden>
-              <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
-              <path d="m20 20-3-3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
+            <SearchIcon aria-hidden className="h-[18px] w-[18px]" />
           </span>
           <input
             type="search"
@@ -262,9 +246,7 @@ function Breadcrumb({ parts }: { parts: { label: string; href?: string }[] }) {
       </Link>
       {parts.map((p) => (
         <span key={p.label} className="flex items-center gap-1.5">
-          <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>
-            ›
-          </span>
+          <ChevronRight aria-hidden className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
           {p.href ? (
             <Link
               href={p.href}
@@ -296,7 +278,7 @@ function DrillList({ items, empty }: { items: DrillItem[]; empty: string }) {
   if (items.length === 0) {
     return (
       <EmptyState
-        icon="📚"
+        icon={<LibraryIcon aria-hidden className="h-7 w-7" />}
         title="这里还是空的"
         description={empty}
       />
@@ -325,12 +307,10 @@ function DrillList({ items, empty }: { items: DrillItem[]; empty: string }) {
               <span className="tabular-nums">
                 {item.count} {item.unit}
               </span>
-              <span
+              <ChevronRight
                 aria-hidden
-                className="text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
-              >
-                ›
-              </span>
+                className="h-4 w-4 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+              />
             </span>
           </Link>
         </li>

@@ -7,17 +7,19 @@ import TextCapture from './TextCapture';
 import VoiceCapture from './VoiceCapture';
 import LinkCapture from './LinkCapture';
 import RecentNotes from './RecentNotes';
-import { PageShell, cn } from '@/components/ui';
+import { PageShell, TextIcon, VoiceIcon, LinkIcon, useToast, cn } from '@/components/ui';
+import type { LucideIcon } from '@/components/ui';
 
-const TABS: { key: CaptureTab; label: string; icon: string }[] = [
-  { key: 'text', label: '文本', icon: '✏️' },
-  { key: 'voice', label: '语音', icon: '🎙️' },
-  { key: 'link', label: '链接', icon: '🔗' },
+const TABS: { key: CaptureTab; label: string; Icon: LucideIcon }[] = [
+  { key: 'text', label: '文本', Icon: TextIcon },
+  { key: 'voice', label: '语音', Icon: VoiceIcon },
+  { key: 'link', label: '链接', Icon: LinkIcon },
 ];
 
 export default function CapturePage() {
   const [tab, setTab] = useState<CaptureTab>('text');
   const [recent, setRecent] = useState<RecentItem[]>([]);
+  const { error: toastError } = useToast();
 
   // 加载最近 3 条
   useEffect(() => {
@@ -54,14 +56,18 @@ export default function CapturePage() {
     setRecent((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
   }, []);
 
-  /** 提交失败标记 */
-  const failNote = useCallback((tempId: string, message?: string) => {
-    setRecent((prev) =>
-      prev.map((n) =>
-        n.id === tempId ? { ...n, pending: false, failed: true, hint: message } : n
-      )
-    );
-  }, []);
+  /** 提交失败标记：列表内保留红色「失败」徽标作持久态，同时弹 toast 即时告知。 */
+  const failNote = useCallback(
+    (tempId: string, message?: string) => {
+      setRecent((prev) =>
+        prev.map((n) =>
+          n.id === tempId ? { ...n, pending: false, failed: true, hint: message } : n
+        )
+      );
+      toastError(message || '保存失败，请重试');
+    },
+    [toastError]
+  );
 
   /** 软删后从最近列表乐观移除（F5） */
   const removeNote = useCallback((id: string) => {
@@ -99,13 +105,13 @@ export default function CapturePage() {
             aria-selected={tab === t.key}
             onClick={() => setTab(t.key)}
             className={cn(
-              'flex flex-1 items-center justify-center gap-1.5 rounded-[0.625rem] py-2.5 text-sm transition duration-200 ease-smooth',
+              'flex flex-1 items-center justify-center gap-1.5 rounded-[0.625rem] py-2.5 text-sm transition duration-200 ease-smooth focus-visible:outline-none',
               tab === t.key
                 ? 'bg-white font-semibold text-brand shadow-card dark:bg-zinc-900'
                 : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200'
             )}
           >
-            <span className="text-base leading-none">{t.icon}</span>
+            <t.Icon aria-hidden className="h-[18px] w-[18px]" />
             {t.label}
           </button>
         ))}

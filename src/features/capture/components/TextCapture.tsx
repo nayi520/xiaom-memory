@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
-import { Button, Textarea, Input } from '@/components/ui';
+import { Button, Textarea, Input, PlusIcon } from '@/components/ui';
 
 export default function TextCapture({
   addOptimistic,
@@ -83,9 +83,9 @@ export default function TextCapture({
         <button
           type="button"
           onClick={() => setShowWhy(true)}
-          className="inline-flex items-center gap-1 rounded-md text-sm text-zinc-400 underline-offset-4 transition hover:text-brand hover:underline"
+          className="inline-flex items-center gap-1 rounded-md text-sm text-zinc-400 underline-offset-4 transition hover:text-brand hover:underline focus-visible:outline-none"
         >
-          <span aria-hidden>＋</span> 为什么重要（可选）
+          <PlusIcon aria-hidden className="h-3.5 w-3.5" /> 为什么重要（可选）
         </button>
       )}
 

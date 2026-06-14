@@ -12,7 +12,20 @@ import { useCallback, useEffect, useState } from 'react';
 import { RATING_LABELS, type ReviewRating } from '../fsrs';
 import type { ReviewQueueItem } from '../types';
 import NoteSource from './NoteSource';
-import { Button, SectionTitle, cn } from '@/components/ui';
+import {
+  Button,
+  SectionTitle,
+  CelebrateIcon,
+  RestIcon,
+  SuccessIcon,
+  GraduateIcon,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  useToast,
+  cn,
+} from '@/components/ui';
+import type { LucideIcon } from '@/components/ui';
 
 const RATING_STYLES: Record<ReviewRating, string> = {
   1: 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-900/60',
@@ -28,6 +41,7 @@ interface Props {
 }
 
 export default function ReviewSession({ items, totalDue, digestMd }: Props) {
+  const { error: toastError } = useToast();
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [showSource, setShowSource] = useState(false);
@@ -57,7 +71,13 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
           const data = (await res.json()) as { graduated?: boolean };
           if (data.graduated) setGraduated((g) => g + 1);
         })
-        .catch(() => setSaveErrors((n) => n + 1));
+        .catch(() => {
+          // 仅在第一次失败时弹一次 toast（避免连续失败刷屏）；完成页另有累计提示。
+          setSaveErrors((n) => {
+            if (n === 0) toastError('评分没保存上（网络问题），这张卡片会留在队列');
+            return n + 1;
+          });
+        });
 
       if (idx + 1 >= items.length) {
         setFinished(true);
@@ -91,13 +111,21 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
   // ============ 完成页 ============
   if (finished) {
     const reviewedCount = stats[1] + stats[2] + stats[3] + stats[4];
+    const { Icon: HeroIcon, color: heroColor } = ((): {
+      Icon: LucideIcon;
+      color: string;
+    } => {
+      if (items.length === 0) return { Icon: CelebrateIcon, color: 'text-brand' };
+      if (skipped) return { Icon: RestIcon, color: 'text-emerald-500' };
+      return { Icon: SuccessIcon, color: 'text-emerald-500' };
+    })();
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10">
         <Header />
         <div className="flex flex-1 flex-col gap-4">
           <section className="animate-fade-in-up rounded-card border border-zinc-200/80 bg-white p-7 text-center shadow-card dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="mx-auto mb-1 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-zinc-100 to-zinc-50 text-4xl shadow-card ring-1 ring-zinc-200/60 dark:from-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60">
-              {items.length === 0 ? '🎉' : skipped ? '🌿' : '✅'}
+            <div className="mx-auto mb-1 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-zinc-100 to-zinc-50 shadow-card ring-1 ring-zinc-200/60 dark:from-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60">
+              <HeroIcon aria-hidden className={cn('h-8 w-8', heroColor)} />
             </div>
             {items.length === 0 ? (
               <>
@@ -136,8 +164,9 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
                   </li>
                 ))}
                 {graduated > 0 && (
-                  <li className="rounded-pill border border-sky-200 bg-sky-50 px-2.5 py-1 font-medium text-sky-600 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-400">
-                    毕业 {graduated} 🎓
+                  <li className="inline-flex items-center gap-1 rounded-pill border border-sky-200 bg-sky-50 px-2.5 py-1 font-medium text-sky-600 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-400">
+                    <GraduateIcon aria-hidden className="h-3.5 w-3.5" />
+                    毕业 {graduated}
                   </li>
                 )}
               </ul>
@@ -229,9 +258,14 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
                       e.stopPropagation();
                       setShowSource((s) => !s);
                     }}
-                    className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-brand underline-offset-2 transition hover:underline"
+                    className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-brand underline-offset-2 transition hover:underline focus-visible:outline-none"
                   >
-                    {showSource ? '收起原始记录 ▴' : '查看原始记录 ▾'}
+                    {showSource ? '收起原始记录' : '查看原始记录'}
+                    {showSource ? (
+                      <ChevronUp aria-hidden className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronDown aria-hidden className="h-3.5 w-3.5" />
+                    )}
                   </button>
                   {showSource && (
                     <ul className="animate-fade-in mt-2.5 space-y-2">
@@ -296,8 +330,12 @@ function Header({ progress }: { progress?: string }) {
             {progress}
           </span>
         )}
-        <Link href="/" className="rounded-md transition hover:text-zinc-600 dark:hover:text-zinc-300">
-          ← 返回
+        <Link
+          href="/"
+          className="inline-flex items-center gap-0.5 rounded-md transition hover:text-zinc-600 focus-visible:outline-none dark:hover:text-zinc-300"
+        >
+          <ChevronLeft aria-hidden className="h-4 w-4" />
+          返回
         </Link>
       </div>
     </header>

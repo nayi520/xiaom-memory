@@ -4,7 +4,7 @@ import { Suspense, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn as credentialsSignIn } from 'next-auth/react';
 import { emailSignIn, appleSignIn } from './actions';
-import { Button, Input } from '@/components/ui';
+import { Button, Input, MailIcon } from '@/components/ui';
 
 export default function LoginPage() {
   // useSearchParams 需包在 Suspense 内，否则静态导出时触发 CSR bailout 报错。
@@ -186,8 +186,8 @@ function LoginForm() {
 
         {sent ? (
           <div className="mt-10 animate-scale-in rounded-card border border-brand/15 bg-brand-light/70 p-6 text-center dark:border-brand/20 dark:bg-brand/10">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-2xl shadow-card dark:bg-zinc-900">
-              ✉️
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-brand shadow-card dark:bg-zinc-900">
+              <MailIcon aria-hidden className="h-6 w-6" />
             </div>
             <p className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
               登录链接已发送

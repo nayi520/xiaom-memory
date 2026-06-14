@@ -21,21 +21,23 @@ import {
 } from '@/lib/db/schema';
 import { excerpt } from '@/features/library/search';
 import ConceptEditor from '@/features/library/components/ConceptEditor';
-import { PageShell, SectionTitle, Badge, cardClass, cn } from '@/components/ui';
+import {
+  PageShell,
+  SectionTitle,
+  Badge,
+  NoteTypeIcon,
+  GraduateIcon,
+  ChevronRight,
+  cardClass,
+  cn,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '概念 · 小M' };
 
-const NOTE_TYPE_ICON: Record<string, string> = {
-  text: '✏️',
-  voice: '🎙️',
-  link: '🔗',
-  image: '🖼️',
-};
-
 const CARD_STATUS_LABELS: Record<string, string> = {
   active: '复习中',
-  graduated: '已内化 🎓',
+  graduated: '已内化',
   suspended: '已暂停',
 };
 
@@ -157,7 +159,7 @@ export default async function ConceptDetailPage({
         </Link>
         {concept.domain && (
           <>
-            <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>›</span>
+            <ChevronRight aria-hidden className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
             <Link
               href={`/library?domain=${encodeURIComponent(concept.domain)}`}
               className="rounded-md transition hover:text-brand dark:hover:text-brand-100"
@@ -168,7 +170,7 @@ export default async function ConceptDetailPage({
         )}
         {concept.domain && concept.topic && (
           <>
-            <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>›</span>
+            <ChevronRight aria-hidden className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
             <Link
               href={`/library?domain=${encodeURIComponent(concept.domain)}&topic=${encodeURIComponent(concept.topic)}`}
               className="rounded-md transition hover:text-brand dark:hover:text-brand-100"
@@ -261,7 +263,12 @@ export default async function ConceptDetailPage({
                     {card.question}
                   </p>
                   <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
-                    <span>{CARD_STATUS_LABELS[card.status] ?? card.status}</span>
+                    <span className="inline-flex items-center gap-1">
+                      {card.status === 'graduated' && (
+                        <GraduateIcon aria-hidden className="h-3.5 w-3.5 text-sky-500" />
+                      )}
+                      {CARD_STATUS_LABELS[card.status] ?? card.status}
+                    </span>
                     {card.status === 'active' && due && (
                       <span>下次复习：{new Date(due).toLocaleDateString('zh-CN')}</span>
                     )}
@@ -287,8 +294,8 @@ export default async function ConceptDetailPage({
                   className={cn(cardClass({ interactive: true, padded: false }), 'group block px-4 py-3.5')}
                 >
                   <div className="flex items-start gap-2.5">
-                    <span className="mt-0.5 shrink-0">
-                      {NOTE_TYPE_ICON[note.type] ?? '📝'}
+                    <span className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500">
+                      <NoteTypeIcon type={note.type} className="h-4 w-4" />
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="break-words text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
@@ -300,9 +307,13 @@ export default async function ConceptDetailPage({
                           90
                         ) || '（无文字内容）'}
                       </p>
-                      <p className="mt-1.5 text-xs text-zinc-400">
-                        {new Date(note.created_at).toLocaleDateString('zh-CN')} ·{' '}
-                        <span className="text-brand/70 transition group-hover:text-brand">查看详情 ›</span>
+                      <p className="mt-1.5 inline-flex items-center text-xs text-zinc-400">
+                        {new Date(note.created_at).toLocaleDateString('zh-CN')}
+                        <span className="mx-1">·</span>
+                        <span className="inline-flex items-center text-brand/70 transition group-hover:text-brand">
+                          查看详情
+                          <ChevronRight aria-hidden className="h-3 w-3" />
+                        </span>
                       </p>
                     </div>
                   </div>

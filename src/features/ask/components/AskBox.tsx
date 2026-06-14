@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Button, Textarea, Markdown, cardClass, cn } from '@/components/ui';
+import { Button, Textarea, Markdown, ChevronRight, cardClass, cn } from '@/components/ui';
 
 interface Source {
   conceptId: string;
@@ -169,12 +169,10 @@ export default function AskBox() {
                           </span>
                         )}
                       </span>
-                      <span
+                      <ChevronRight
                         aria-hidden
-                        className="mt-0.5 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
-                      >
-                        ›
-                      </span>
+                        className="mt-0.5 h-4 w-4 shrink-0 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+                      />
                     </Link>
                   </li>
                 ))}

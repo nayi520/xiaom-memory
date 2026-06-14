@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui';
+import { Button, useToast } from '@/components/ui';
 
 type Phase =
   | 'loading' // 检测中
@@ -30,9 +30,9 @@ function urlBase64ToUint8Array(base64: string) {
 const DEFAULT_REMINDER_HOUR = 8;
 
 export default function PushToggle() {
+  const { success, error: toastError } = useToast();
   const [phase, setPhase] = useState<Phase>('loading');
   const [publicKey, setPublicKey] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   // 反映实际设定的提醒小时（与 ReminderTimePicker 同源 /api/settings）。
   const [reminderHour, setReminderHour] = useState<number>(DEFAULT_REMINDER_HOUR);
 
@@ -95,7 +95,6 @@ export default function PushToggle() {
   async function enable() {
     if (!publicKey) return;
     setPhase('busy');
-    setMessage(null);
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
@@ -117,15 +116,15 @@ export default function PushToggle() {
         throw new Error((data as { error?: string }).error ?? `保存失败（${res.status}）`);
       }
       setPhase('on');
+      success('已开启复习提醒');
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : '开启失败');
+      toastError(err instanceof Error ? err.message : '开启失败');
       setPhase('off');
     }
   }
 
   async function disable() {
     setPhase('busy');
-    setMessage(null);
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
@@ -138,8 +137,9 @@ export default function PushToggle() {
         await sub.unsubscribe();
       }
       setPhase('off');
+      success('已关闭复习提醒');
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : '关闭失败');
+      toastError(err instanceof Error ? err.message : '关闭失败');
       setPhase('on');
     }
   }
@@ -192,7 +192,6 @@ export default function PushToggle() {
           ? `已开启：每天 ${reminderTime}（北京时间）有到期卡片时推送提醒，点击直达复习页。`
           : `开启后，每天 ${reminderTime} 有到期卡片时会收到推送提醒。`}
       </p>
-      {message && <p className="text-xs text-red-500">{message}</p>}
     </div>
   );
 }

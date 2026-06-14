@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, fieldClass } from '@/components/ui';
+import { Button, EditIcon, useToast, fieldClass } from '@/components/ui';
 
 export default function NoteTagEditor({
   noteId,
@@ -17,9 +17,9 @@ export default function NoteTagEditor({
   tags: string[];
 }) {
   const router = useRouter();
+  const { success, error: toastError } = useToast();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [value, setValue] = useState('');
 
   async function save() {
@@ -32,7 +32,6 @@ export default function NoteTagEditor({
       )
     );
     setSaving(true);
-    setError(null);
     try {
       const res = await fetch('/api/library/note-tags', {
         method: 'POST',
@@ -41,13 +40,14 @@ export default function NoteTagEditor({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? `保存失败（${res.status}）`);
+        toastError(data.error ?? `保存失败（${res.status}）`);
         return;
       }
       setEditing(false);
+      success('标签已更新');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '网络错误');
+      toastError(err instanceof Error ? err.message : '网络错误');
     } finally {
       setSaving(false);
     }
@@ -73,9 +73,10 @@ export default function NoteTagEditor({
             setValue(tags.join('，'));
             setEditing(true);
           }}
-          className="rounded-md px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-brand dark:hover:bg-zinc-800"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-brand focus-visible:outline-none dark:hover:bg-zinc-800"
         >
-          ✏️ 修正
+          <EditIcon aria-hidden className="h-3.5 w-3.5" />
+          修正
         </button>
       </div>
     );
@@ -89,7 +90,6 @@ export default function NoteTagEditor({
         placeholder="标签用逗号分隔，如：心理学，决策偏差"
         className={fieldClass('px-3 py-2.5 text-sm dark:bg-zinc-800')}
       />
-      {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
       <div className="mt-3 flex gap-2">
         <Button onClick={save} loading={saving} fullWidth>
           {saving ? '保存中…' : '保存修正'}

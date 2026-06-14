@@ -10,17 +10,17 @@ import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { notes } from '@/lib/db/schema';
 import TrashItemActions from '@/features/trash/components/TrashItemActions';
-import { PageShell, EmptyState } from '@/components/ui';
+import {
+  PageShell,
+  EmptyState,
+  NoteTypeIcon,
+  WhyIcon,
+  TrashIcon,
+  ChevronRight,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '回收站 · 小M' };
-
-const TYPE_ICON: Record<string, string> = {
-  text: '✏️',
-  voice: '🎙️',
-  link: '🔗',
-  image: '🖼️',
-};
 
 interface TrashedNote {
   id: string;
@@ -73,7 +73,7 @@ export default async function TrashPage() {
         >
           设置
         </Link>
-        <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>›</span>
+        <ChevronRight aria-hidden className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
         <span className="font-medium text-zinc-600 dark:text-zinc-300">回收站</span>
       </nav>
 
@@ -88,7 +88,7 @@ export default async function TrashPage() {
 
       {trashedNotes.length === 0 ? (
         <EmptyState
-          icon="🗑️"
+          icon={<TrashIcon aria-hidden className="h-7 w-7" />}
           title="回收站是空的"
           description="删除的记录会出现在这里，随时可以恢复。"
         />
@@ -100,13 +100,18 @@ export default async function TrashPage() {
               className="rounded-card border border-zinc-200/80 bg-white px-4 py-3.5 text-sm shadow-card dark:border-zinc-800 dark:bg-zinc-900"
             >
               <div className="flex items-start gap-2.5">
-                <span className="mt-0.5 shrink-0">{TYPE_ICON[note.type] ?? '📝'}</span>
+                <span className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500">
+                  <NoteTypeIcon type={note.type} className="h-4 w-4" />
+                </span>
                 <div className="min-w-0 flex-1">
                   <p className="break-words leading-relaxed text-zinc-700 dark:text-zinc-200">
                     {preview(note) || '（无文字内容）'}
                   </p>
                   {note.why_important && (
-                    <p className="mt-1 text-xs text-zinc-400">💡 {note.why_important}</p>
+                    <p className="mt-1 flex items-start gap-1 text-xs text-zinc-400">
+                      <WhyIcon aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-amber-400" />
+                      <span className="min-w-0">{note.why_important}</span>
+                    </p>
                   )}
                   <p className="mt-1.5 text-xs text-zinc-400">
                     删除于 {new Date(note.deleted_at).toLocaleString('zh-CN')}

@@ -2,14 +2,16 @@
 
 import type { RecentItem } from '../types';
 import NoteDeleteButton from './NoteDeleteButton';
-import { SectionTitle, Badge, Markdown, cn } from '@/components/ui';
-
-const TYPE_ICON: Record<string, string> = {
-  text: '✏️',
-  voice: '🎙️',
-  link: '🔗',
-  image: '🖼️',
-};
+import {
+  SectionTitle,
+  Badge,
+  Markdown,
+  NoteTypeIcon,
+  WhyIcon,
+  SuccessIcon,
+  FailIcon,
+  cn,
+} from '@/components/ui';
 
 /** 最近记录正文（raw_content/transcript，Markdown 渲染）；纯链接类无正文时回退 URL 文本。 */
 function bodyOf(item: RecentItem): string {
@@ -51,8 +53,8 @@ export default function RecentNotes({
             )}
           >
             <div className="flex items-start gap-2.5">
-              <span className="mt-0.5 shrink-0 text-base leading-none">
-                {TYPE_ICON[item.type] ?? '📝'}
+              <span className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500">
+                <NoteTypeIcon type={item.type} className="h-[18px] w-[18px]" />
               </span>
               <div className="min-w-0 flex-1">
                 {/* 正文用 Markdown 渲染；feed 里保持紧凑，超高度淡出截断（max-h + overflow） */}
@@ -63,7 +65,10 @@ export default function RecentNotes({
                   />
                 </div>
                 {item.why_important && (
-                  <p className="mt-1 text-xs text-zinc-400">💡 {item.why_important}</p>
+                  <p className="mt-1 flex items-start gap-1 text-xs text-zinc-400">
+                    <WhyIcon aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-amber-400" />
+                    <span className="min-w-0">{item.why_important}</span>
+                  </p>
                 )}
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
                   <span>{timeAgo(item.created_at)}</span>
@@ -74,10 +79,18 @@ export default function RecentNotes({
                     </Badge>
                   )}
                   {!item.pending && !item.failed && !item.hint && (
-                    <Badge tone="emerald">✓ 已记下</Badge>
+                    <Badge tone="emerald">
+                      <SuccessIcon aria-hidden className="h-3 w-3" />
+                      已记下
+                    </Badge>
                   )}
                   {item.hint && <Badge tone="amber">{item.hint}</Badge>}
-                  {item.failed && <Badge tone="red">✕ 失败</Badge>}
+                  {item.failed && (
+                    <Badge tone="red">
+                      <FailIcon aria-hidden className="h-3 w-3" />
+                      失败
+                    </Badge>
+                  )}
                 </div>
               </div>
               {/* 已落库的记录才可删除（乐观占位 / 保存中不显示） */}

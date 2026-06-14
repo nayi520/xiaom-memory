@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import SwRegister from './sw-register';
 import BottomNav from '@/components/BottomNav';
+import { ThemeProvider, ToastProvider, themeInitScript } from '@/components/ui';
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? 'https://memory.nayitools.cn'),
@@ -26,11 +27,19 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="zh-CN" suppressHydrationWarning>
+      <head>
+        {/* 首屏前按持久化偏好落 .dark/color-scheme，杜绝深色用户刷新闪白（须在 body 渲染前执行）。 */}
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body>
-        {children}
-        <BottomNav />
-        <SwRegister />
+        <ThemeProvider>
+          <ToastProvider>
+            {children}
+            <BottomNav />
+            <SwRegister />
+          </ToastProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

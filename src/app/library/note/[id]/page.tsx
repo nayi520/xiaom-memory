@@ -18,17 +18,21 @@ import {
 import NoteAudio from '@/features/library/components/NoteAudio';
 import NoteTagEditor from '@/features/library/components/NoteTagEditor';
 import NoteDeleteButton from '@/features/capture/components/NoteDeleteButton';
-import { PageShell, SectionTitle, Markdown, cardClass, cn } from '@/components/ui';
+import {
+  PageShell,
+  SectionTitle,
+  Markdown,
+  NoteTypeIcon,
+  NOTE_TYPE_LABELS,
+  WhyIcon,
+  LinkIcon,
+  ChevronRight,
+  cardClass,
+  cn,
+} from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '记录 · 小M' };
-
-const NOTE_TYPE_LABELS: Record<string, string> = {
-  text: '✏️ 文本',
-  voice: '🎙️ 语音',
-  link: '🔗 链接',
-  image: '🖼️ 图片',
-};
 
 const STATUS_LABELS: Record<string, string> = {
   inbox: '待整理',
@@ -100,7 +104,7 @@ export default async function NoteDetailPage({
         >
           知识库
         </Link>
-        <span className="text-zinc-300 dark:text-zinc-600" aria-hidden>›</span>
+        <ChevronRight aria-hidden className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
         <span className="font-medium text-zinc-600 dark:text-zinc-300">原始记录</span>
         <span className="ml-auto">
           <NoteDeleteButton noteId={note.id} redirectTo="/library" />
@@ -110,7 +114,8 @@ export default async function NoteDetailPage({
       {/* 原文 / 链接 / 音频 */}
       <section className="rounded-card border border-zinc-200/80 bg-white p-6 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
         <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
-          <span className="font-medium text-zinc-500 dark:text-zinc-400">
+          <span className="inline-flex items-center gap-1 font-medium text-zinc-500 dark:text-zinc-400">
+            <NoteTypeIcon type={note.type} className="h-3.5 w-3.5" />
             {NOTE_TYPE_LABELS[note.type] ?? note.type}
           </span>
           <span>{new Date(note.created_at).toLocaleString('zh-CN')}</span>
@@ -124,9 +129,10 @@ export default async function NoteDetailPage({
             href={note.url}
             target="_blank"
             rel="noreferrer"
-            className="mt-3 inline-flex max-w-full items-center gap-1 truncate rounded-md text-sm text-brand underline underline-offset-2 transition hover:text-brand-dark"
+            className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-md text-sm text-brand underline underline-offset-2 transition hover:text-brand-dark focus-visible:outline-none"
           >
-            🔗 {note.url}
+            <LinkIcon aria-hidden className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{note.url}</span>
           </a>
         )}
 
@@ -147,8 +153,9 @@ export default async function NoteDetailPage({
       {/* 为什么重要 */}
       {note.why_important && (
         <section className="mt-4 rounded-card border border-amber-200 bg-amber-50 px-5 py-4 dark:border-amber-900/60 dark:bg-amber-950/40">
-          <h2 className="mb-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
-            💡 为什么重要
+          <h2 className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+            <WhyIcon aria-hidden className="h-3.5 w-3.5" />
+            为什么重要
           </h2>
           <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
             {note.why_important}
@@ -182,12 +189,16 @@ export default async function NoteDetailPage({
               <li key={c.id}>
                 <Link
                   href={`/library/concept/${c.id}`}
-                  className={cn(cardClass({ interactive: true, padded: false }), 'group flex items-center justify-between px-4 py-3.5')}
+                  className={cn(cardClass({ interactive: true, padded: false }), 'group flex items-center justify-between gap-3 px-4 py-3.5')}
                 >
-                  <span className="font-medium text-zinc-800 dark:text-zinc-100">💡 {c.name}</span>
-                  <span className="text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600">
-                    ›
+                  <span className="flex min-w-0 items-center gap-1.5 font-medium text-zinc-800 dark:text-zinc-100">
+                    <WhyIcon aria-hidden className="h-4 w-4 shrink-0 text-amber-400" />
+                    <span className="truncate">{c.name}</span>
                   </span>
+                  <ChevronRight
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+                  />
                 </Link>
               </li>
             ))}

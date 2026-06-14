@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { cn } from '@/components/ui';
+import { ChevronDown, useToast } from '@/components/ui';
 
 /** 缺省提醒小时（北京时间 8 点），与后端保持一致。 */
 const DEFAULT_REMINDER_HOUR = 8;
@@ -18,10 +18,10 @@ function formatHour(h: number): string {
 }
 
 export default function ReminderTimePicker() {
+  const { success, error: toastError } = useToast();
   const [hour, setHour] = useState<number>(DEFAULT_REMINDER_HOUR);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +51,6 @@ export default function ReminderTimePicker() {
     const prev = hour;
     setHour(next);
     setSaving(true);
-    setMessage(null);
     try {
       const res = await fetch('/api/settings', {
         method: 'PATCH',
@@ -62,10 +61,10 @@ export default function ReminderTimePicker() {
         const data = await res.json().catch(() => ({}));
         throw new Error((data as { error?: string }).error ?? `保存失败（${res.status}）`);
       }
-      setMessage('已保存');
+      success(`提醒时间已设为 ${formatHour(next)}`);
     } catch (err) {
       setHour(prev); // 回滚到改动前的值
-      setMessage(err instanceof Error ? err.message : '保存失败');
+      toastError(err instanceof Error ? err.message : '保存失败');
     } finally {
       setSaving(false);
     }
@@ -78,16 +77,6 @@ export default function ReminderTimePicker() {
         <p className="mt-0.5 text-xs text-zinc-400">
           每天 {formatHour(hour)}（北京时间）有到期卡片时推送。
         </p>
-        {message && (
-          <p
-            className={cn(
-              'mt-1 text-xs',
-              message === '已保存' ? 'text-emerald-500' : 'text-red-500'
-            )}
-          >
-            {message === '已保存' ? '✓ 已保存' : message}
-          </p>
-        )}
       </div>
       <label className="relative shrink-0">
         <span className="sr-only">复习提醒时间</span>
@@ -103,9 +92,10 @@ export default function ReminderTimePicker() {
             </option>
           ))}
         </select>
-        <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-zinc-400" aria-hidden>
-          ▾
-        </span>
+        <ChevronDown
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-3 my-auto h-4 w-4 text-zinc-400"
+        />
       </label>
     </div>
   );

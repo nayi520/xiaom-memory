@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
-import { Input, cn } from '@/components/ui';
+import { Input, useToast, cn } from '@/components/ui';
 
 const MAX_SECONDS = 180; // 上限 3 分钟
 
@@ -18,7 +18,7 @@ export default function VoiceCapture({
   const [state, setState] = useState<RecState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [why, setWhy] = useState('');
-  const [error, setError] = useState('');
+  const { error: toastError } = useToast();
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -32,7 +32,6 @@ export default function VoiceCapture({
   }, []);
 
   async function startRecording() {
-    setError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = MediaRecorder.isTypeSupported('audio/webm')
@@ -58,7 +57,7 @@ export default function VoiceCapture({
         });
       }, 1000);
     } catch {
-      setError('无法访问麦克风，请检查浏览器权限');
+      toastError('无法访问麦克风，请检查浏览器权限');
     }
   }
 
@@ -80,7 +79,7 @@ export default function VoiceCapture({
     // 乐观上屏
     const temp = makeTempNote({
       type: 'voice',
-      raw_content: '🎙️ 语音记录',
+      raw_content: '语音记录',
       why_important: whyText,
       hint: '上传中…',
     });
@@ -203,14 +202,6 @@ export default function VoiceCapture({
               ? '保存中…'
               : `点击开始录音（最长 ${MAX_SECONDS / 60} 分钟）`}
         </p>
-        {error && (
-          <p
-            role="alert"
-            className="mt-3 rounded-field bg-red-50 px-3 py-1.5 text-sm text-red-600 dark:bg-red-950 dark:text-red-400"
-          >
-            {error}
-          </p>
-        )}
       </div>
 
       <Input

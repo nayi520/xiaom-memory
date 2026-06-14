@@ -5,7 +5,15 @@ import PushToggle from '@/features/review/components/PushToggle';
 import ReminderTimePicker from '@/features/review/components/ReminderTimePicker';
 import StatsPanel from '@/features/settings/components/StatsPanel';
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
-import { PageShell, SectionTitle, cardClass, cn } from '@/components/ui';
+import {
+  PageShell,
+  SectionTitle,
+  ThemeToggle,
+  TrashIcon,
+  ChevronRight,
+  cardClass,
+  cn,
+} from '@/components/ui';
 
 export const metadata = { title: '设置 · 小M' };
 
@@ -21,6 +29,11 @@ export default function SettingsPage() {
       <section className="space-y-2.5">
         <SectionTitle className="mb-1">数据统计</SectionTitle>
         <StatsPanel />
+      </section>
+
+      <section className="mt-9 space-y-2.5">
+        <SectionTitle className="mb-1">外观</SectionTitle>
+        <ThemeToggle />
       </section>
 
       <section className="mt-9 space-y-2.5">
@@ -63,15 +76,13 @@ export default function SettingsPage() {
           )}
         >
           <span className="flex items-center gap-2.5 font-medium text-zinc-800 dark:text-zinc-100">
-            <span aria-hidden>🗑️</span>
+            <TrashIcon aria-hidden className="h-[18px] w-[18px] text-zinc-400 dark:text-zinc-500" />
             回收站
           </span>
-          <span
-            className="text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+          <ChevronRight
             aria-hidden
-          >
-            ›
-          </span>
+            className="h-4 w-4 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+          />
         </Link>
         <p className="text-sm leading-relaxed text-zinc-400">
           删除的记录会先移到回收站，可恢复或永久删除。

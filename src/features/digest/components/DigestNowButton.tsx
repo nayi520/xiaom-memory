@@ -2,16 +2,16 @@
 
 import { useState } from 'react';
 import type { DigestResult } from '../pipeline';
-import { Button } from '@/components/ui';
+import { Button, useToast } from '@/components/ui';
 
 type State =
   | { phase: 'idle' }
   | { phase: 'running' }
-  | { phase: 'done'; result: DigestResult }
-  | { phase: 'error'; message: string };
+  | { phase: 'done'; result: DigestResult };
 
 /** 设置页"立即整理"按钮：手动触发当前用户的 AI 整理流水线 */
 export default function DigestNowButton() {
+  const { error: toastError } = useToast();
   const [state, setState] = useState<State>({ phase: 'idle' });
 
   async function run() {
@@ -20,15 +20,14 @@ export default function DigestNowButton() {
       const res = await fetch('/api/digest/run', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
-        setState({ phase: 'error', message: data.error ?? `请求失败（${res.status}）` });
+        toastError(data.error ?? `请求失败（${res.status}）`);
+        setState({ phase: 'idle' });
         return;
       }
       setState({ phase: 'done', result: data.result as DigestResult });
     } catch (err) {
-      setState({
-        phase: 'error',
-        message: err instanceof Error ? err.message : '网络错误',
-      });
+      toastError(err instanceof Error ? err.message : '网络错误');
+      setState({ phase: 'idle' });
     }
   }
 
@@ -62,15 +61,6 @@ export default function DigestNowButton() {
             )}
           </ul>
         </div>
-      )}
-
-      {state.phase === 'error' && (
-        <p
-          role="alert"
-          className="animate-fade-in rounded-card border border-red-200 bg-red-50 p-3.5 text-sm text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400"
-        >
-          {state.message}
-        </p>
       )}
     </div>
   );

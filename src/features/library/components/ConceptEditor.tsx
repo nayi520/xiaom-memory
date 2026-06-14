@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Markdown, fieldClass } from '@/components/ui';
+import { Button, Markdown, EditIcon, useToast, fieldClass } from '@/components/ui';
 
 export interface EditableConcept {
   id: string;
@@ -19,8 +19,10 @@ export interface EditableConcept {
 
 export default function ConceptEditor({ concept }: { concept: EditableConcept }) {
   const router = useRouter();
+  const { success, error: toastError } = useToast();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  // 仅保留关键行内校验（概念名为空）；服务端错误/成功走 toast。
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(concept);
 
@@ -45,13 +47,14 @@ export default function ConceptEditor({ concept }: { concept: EditableConcept })
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? `保存失败（${res.status}）`);
+        toastError(data.error ?? `保存失败（${res.status}）`);
         return;
       }
       setEditing(false);
+      success('修正已保存');
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '网络错误');
+      toastError(err instanceof Error ? err.message : '网络错误');
     } finally {
       setSaving(false);
     }
@@ -67,11 +70,13 @@ export default function ConceptEditor({ concept }: { concept: EditableConcept })
           <button
             onClick={() => {
               setForm(concept);
+              setError(null);
               setEditing(true);
             }}
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-brand dark:hover:bg-zinc-800"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-brand focus-visible:outline-none dark:hover:bg-zinc-800"
           >
-            ✏️ 修正
+            <EditIcon aria-hidden className="h-3.5 w-3.5" />
+            修正
           </button>
         </div>
         {concept.explanation && (

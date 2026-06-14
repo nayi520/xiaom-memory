@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { Button } from '@/components/ui';
+import { Button, useToast } from '@/components/ui';
 
 function filenameFromDisposition(header: string | null): string | null {
   if (!header) return null;
@@ -17,17 +17,16 @@ function filenameFromDisposition(header: string | null): string | null {
 }
 
 export default function ExportMarkdownButton() {
+  const { success, error: toastError } = useToast();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function exportMd() {
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch('/api/export/markdown');
       if (!res.ok) {
         const text = await res.text().catch(() => '');
-        setError(text || `导出失败（${res.status}）`);
+        toastError(text || `导出失败（${res.status}）`);
         return;
       }
       const blob = await res.blob();
@@ -43,32 +42,23 @@ export default function ExportMarkdownButton() {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      success('已导出 Markdown 文件');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '网络错误');
+      toastError(err instanceof Error ? err.message : '网络错误');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="space-y-2">
-      <Button
-        variant="secondary"
-        size="lg"
-        fullWidth
-        onClick={exportMd}
-        loading={busy}
-      >
-        {busy ? '导出中…' : '导出 Markdown'}
-      </Button>
-      {error && (
-        <p
-          role="alert"
-          className="animate-fade-in rounded-card border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400"
-        >
-          {error}
-        </p>
-      )}
-    </div>
+    <Button
+      variant="secondary"
+      size="lg"
+      fullWidth
+      onClick={exportMd}
+      loading={busy}
+    >
+      {busy ? '导出中…' : '导出 Markdown'}
+    </Button>
   );
 }

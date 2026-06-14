@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui';
+import { Button, TrashIcon, useToast } from '@/components/ui';
 
 export default function NoteDeleteButton({
   noteId,
@@ -26,13 +26,12 @@ export default function NoteDeleteButton({
   label?: string;
 }) {
   const router = useRouter();
+  const { success, error: toastError } = useToast();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function trash() {
     setBusy(true);
-    setError(null);
     try {
       const res = await fetch(`/api/notes/${noteId}`, {
         method: 'PATCH',
@@ -41,10 +40,11 @@ export default function NoteDeleteButton({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error ?? `删除失败（${res.status}）`);
+        toastError(data.error ?? `删除失败（${res.status}）`);
         setBusy(false);
         return;
       }
+      success('已移到回收站');
       onTrashed?.();
       if (redirectTo) {
         router.replace(redirectTo);
@@ -53,7 +53,7 @@ export default function NoteDeleteButton({
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '网络错误');
+      toastError(err instanceof Error ? err.message : '网络错误');
       setBusy(false);
     }
   }
@@ -62,18 +62,15 @@ export default function NoteDeleteButton({
     return (
       <button
         type="button"
-        onClick={() => {
-          setError(null);
-          setConfirming(true);
-        }}
+        onClick={() => setConfirming(true)}
         className={
           className ??
-          'shrink-0 rounded-md p-1.5 text-zinc-300 opacity-60 transition hover:bg-red-50 hover:text-red-500 hover:opacity-100 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-red-950'
+          'shrink-0 rounded-md p-1.5 text-zinc-300 opacity-60 transition hover:bg-red-50 hover:text-red-500 hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-red-950'
         }
         aria-label="删除这条记录"
         title={label}
       >
-        <TrashGlyph />
+        <TrashIcon aria-hidden className="h-4 w-4" />
       </button>
     );
   }
@@ -89,21 +86,6 @@ export default function NoteDeleteButton({
           取消
         </Button>
       </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
     </div>
-  );
-}
-
-function TrashGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
-      <path
-        d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7M10 11v6M14 11v6"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }

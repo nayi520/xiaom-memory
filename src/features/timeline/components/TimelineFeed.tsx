@@ -11,14 +11,17 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Markdown, Badge, EmptyState, cn } from '@/components/ui';
-
-const TYPE_ICON: Record<string, string> = {
-  text: '✏️',
-  voice: '🎙️',
-  link: '🔗',
-  image: '🖼️',
-};
+import {
+  Button,
+  Markdown,
+  Badge,
+  EmptyState,
+  NoteTypeIcon,
+  WarningIcon,
+  ClockIcon,
+  ChevronRight,
+  cn,
+} from '@/components/ui';
 
 const STATUS_BADGE: Record<
   string,
@@ -123,9 +126,14 @@ export default function TimelineFeed() {
   if (phase === 'error' && notes.length === 0) {
     return (
       <EmptyState
-        icon="⚠️"
+        icon={<WarningIcon aria-hidden className="h-7 w-7 text-amber-400" />}
         title="加载失败"
         description={error ?? '请稍后重试。'}
+        action={
+          <Button variant="secondary" size="sm" onClick={() => location.reload()}>
+            重新加载
+          </Button>
+        }
       />
     );
   }
@@ -133,7 +141,7 @@ export default function TimelineFeed() {
   if (notes.length === 0) {
     return (
       <EmptyState
-        icon="🕊️"
+        icon={<ClockIcon aria-hidden className="h-7 w-7" />}
         title="还没有记录"
         description="去记点东西，它们会按时间出现在这里。"
       />
@@ -152,8 +160,8 @@ export default function TimelineFeed() {
                 className="group block animate-fade-in rounded-card border border-zinc-200/80 bg-white px-4 py-3.5 text-sm shadow-card transition duration-200 hover:border-brand/40 hover:shadow-card-hover dark:border-zinc-800 dark:bg-zinc-900"
               >
                 <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 shrink-0 text-base leading-none">
-                    {TYPE_ICON[note.type] ?? '📝'}
+                  <span className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500">
+                    <NoteTypeIcon type={note.type} className="h-[18px] w-[18px]" />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="relative max-h-32 overflow-hidden">
@@ -167,12 +175,10 @@ export default function TimelineFeed() {
                       {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
                     </div>
                   </div>
-                  <span
+                  <ChevronRight
                     aria-hidden
-                    className="mt-0.5 shrink-0 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
-                  >
-                    ›
-                  </span>
+                    className="mt-0.5 h-4 w-4 shrink-0 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+                  />
                 </div>
               </Link>
             </li>

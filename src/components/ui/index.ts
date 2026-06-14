@@ -8,3 +8,18 @@ export { default as Skeleton, SkeletonRow } from './Skeleton';
 export { default as Badge } from './Badge';
 export { default as Markdown } from './Markdown';
 export { cn } from './cn';
+
+// 图标体系（lucide）：记录类型组件 + 具名语义/操作/状态图标
+export * from './icons';
+
+// Toast 反馈体系
+export { ToastProvider, useToast, type ToastOptions } from './Toast';
+
+// 深色模式（手动开关 + 跟随系统）
+export {
+  ThemeProvider,
+  useTheme,
+  themeInitScript,
+  type Theme,
+} from './theme';
+export { default as ThemeToggle } from './ThemeToggle';

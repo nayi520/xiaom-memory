@@ -9,7 +9,15 @@ import {
   type HitSource,
   type SearchHit,
 } from '../search';
-import { EmptyState, cardClass, cn } from '@/components/ui';
+import {
+  EmptyState,
+  SearchIcon,
+  CloseIcon,
+  WhyIcon,
+  NoteIcon,
+  cardClass,
+  cn,
+} from '@/components/ui';
 
 const SOURCE_STYLES: Record<HitSource, string> = {
   keyword: 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400',
@@ -33,9 +41,10 @@ export default function SearchResults({ q, hits, semanticUsed }: Props) {
         </p>
         <Link
           href="/library"
-          className="rounded-md transition hover:text-zinc-600 dark:hover:text-zinc-300"
+          className="inline-flex items-center gap-1 rounded-md transition hover:text-zinc-600 focus-visible:outline-none dark:hover:text-zinc-300"
         >
-          清除 ✕
+          清除
+          <CloseIcon aria-hidden className="h-3.5 w-3.5" />
         </Link>
       </div>
 
@@ -47,7 +56,7 @@ export default function SearchResults({ q, hits, semanticUsed }: Props) {
 
       {hits.length === 0 ? (
         <EmptyState
-          icon="🔍"
+          icon={<SearchIcon aria-hidden className="h-7 w-7" />}
           title="没找到相关内容"
           description="换个关键词，或检查有没有错别字。"
         />
@@ -64,8 +73,13 @@ export default function SearchResults({ q, hits, semanticUsed }: Props) {
                 className={cn(cardClass({ interactive: true, padded: false }), 'block px-4 py-3.5')}
               >
                 <div className="flex items-center gap-2">
-                  <span className="shrink-0 text-xs font-medium text-zinc-400">
-                    {hit.kind === 'concept' ? '💡 概念' : '📝 记录'}
+                  <span className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-zinc-400">
+                    {hit.kind === 'concept' ? (
+                      <WhyIcon aria-hidden className="h-3.5 w-3.5 text-amber-400" />
+                    ) : (
+                      <NoteIcon aria-hidden className="h-3.5 w-3.5" />
+                    )}
+                    {hit.kind === 'concept' ? '概念' : '记录'}
                   </span>
                   <span className="flex flex-wrap gap-1">
                     {hit.sources.map((s) => (

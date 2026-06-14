@@ -13,10 +13,9 @@ html {
   background-color: #fafafa;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    background-color: #09090b;
-  }
+/* 深色背景跟随手动开关（.dark 由 ThemeProvider / 首屏内联脚本落在 <html> 上） */
+html.dark {
+  background-color: #09090b;
 }
 
 body {
@@ -32,14 +31,12 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background-image: radial-gradient(
-      1200px 600px at 50% -10%,
-      rgb(99 102 241 / 0.08),
-      transparent 70%
-    );
-  }
+.dark body {
+  background-image: radial-gradient(
+    1200px 600px at 50% -10%,
+    rgb(99 102 241 / 0.08),
+    transparent 70%
+  );
 }
 
 /* 统一的键盘焦点态：只在键盘导航时出现，不打扰鼠标/触摸用户 */
@@ -47,10 +44,9 @@ body {
   :focus-visible {
     @apply outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-zinc-50 dark:ring-offset-zinc-950;
   }
-  /* 表单控件配色随系统，避免深色下浏览器默认蓝 */
+  /* 表单控件主题色。color-scheme 由 ThemeProvider/首屏脚本写在 <html> 上（跟随手动开关），此处不再写死。 */
   :root {
     accent-color: #4f46e5;
-    color-scheme: light dark;
   }
 }
 

@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Markdown, cn } from '@/components/ui';
+import { Button, Markdown, useToast, cn } from '@/components/ui';
 
 interface WeeklyDigest {
   period: string;
@@ -25,10 +25,10 @@ type LoadState =
 type GenState =
   | { phase: 'idle' }
   | { phase: 'running' }
-  | { phase: 'empty'; period: string }
-  | { phase: 'error'; message: string };
+  | { phase: 'empty'; period: string };
 
 export default function WeeklyDigestPanel() {
+  const { error: toastError } = useToast();
   const [load, setLoad] = useState<LoadState>({ phase: 'loading' });
   const [gen, setGen] = useState<GenState>({ phase: 'idle' });
 
@@ -59,7 +59,8 @@ export default function WeeklyDigestPanel() {
       const res = await fetch('/api/digest/run-weekly', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) {
-        setGen({ phase: 'error', message: data?.error ?? `生成失败（${res.status}）` });
+        toastError(data?.error ?? `生成失败（${res.status}）`);
+        setGen({ phase: 'idle' });
         return;
       }
       if (!data?.ok) {
@@ -69,10 +70,8 @@ export default function WeeklyDigestPanel() {
       setGen({ phase: 'idle' });
       await fetchLatest();
     } catch (err) {
-      setGen({
-        phase: 'error',
-        message: err instanceof Error ? err.message : '网络错误',
-      });
+      toastError(err instanceof Error ? err.message : '网络错误');
+      setGen({ phase: 'idle' });
     }
   }
 
@@ -91,15 +90,6 @@ export default function WeeklyDigestPanel() {
       {gen.phase === 'empty' && (
         <p className="animate-fade-in text-sm text-zinc-500 dark:text-zinc-400">
           本周还没有可汇总的内容——先记录几条、让 AI 整理后再来生成。
-        </p>
-      )}
-
-      {gen.phase === 'error' && (
-        <p
-          role="alert"
-          className="animate-fade-in rounded-card border border-red-200 bg-red-50 p-3.5 text-sm text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400"
-        >
-          {gen.message}
         </p>
       )}
 
