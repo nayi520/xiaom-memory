@@ -6,4 +6,5 @@ export { default as PageHeader, SectionTitle } from './PageHeader';
 export { default as EmptyState } from './EmptyState';
 export { default as Skeleton, SkeletonRow } from './Skeleton';
 export { default as Badge } from './Badge';
+export { default as Markdown } from './Markdown';
 export { cn } from './cn';

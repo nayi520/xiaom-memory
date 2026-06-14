@@ -2,7 +2,7 @@
 
 import type { RecentItem } from '../types';
 import NoteDeleteButton from './NoteDeleteButton';
-import { SectionTitle, Badge, cn } from '@/components/ui';
+import { SectionTitle, Badge, Markdown, cn } from '@/components/ui';
 
 const TYPE_ICON: Record<string, string> = {
   text: '✏️',
@@ -11,9 +11,9 @@ const TYPE_ICON: Record<string, string> = {
   image: '🖼️',
 };
 
-function preview(item: RecentItem): string {
-  const text = item.transcript || item.raw_content || item.url || '';
-  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+/** 最近记录正文（raw_content/transcript，Markdown 渲染）；纯链接类无正文时回退 URL 文本。 */
+function bodyOf(item: RecentItem): string {
+  return item.raw_content || item.transcript || item.url || '';
 }
 
 function timeAgo(iso: string): string {
@@ -55,9 +55,13 @@ export default function RecentNotes({
                 {TYPE_ICON[item.type] ?? '📝'}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="break-words leading-relaxed text-zinc-800 dark:text-zinc-100">
-                  {preview(item)}
-                </p>
+                {/* 正文用 Markdown 渲染；feed 里保持紧凑，超高度淡出截断（max-h + overflow） */}
+                <div className="relative max-h-32 overflow-hidden">
+                  <Markdown
+                    content={bodyOf(item)}
+                    className="text-zinc-800 dark:text-zinc-100"
+                  />
+                </div>
                 {item.why_important && (
                   <p className="mt-1 text-xs text-zinc-400">💡 {item.why_important}</p>
                 )}

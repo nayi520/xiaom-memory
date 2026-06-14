@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, fieldClass } from '@/components/ui';
+import { Button, Markdown, fieldClass } from '@/components/ui';
 
 export interface EditableConcept {
   id: string;
@@ -75,9 +75,10 @@ export default function ConceptEditor({ concept }: { concept: EditableConcept })
           </button>
         </div>
         {concept.explanation && (
-          <p className="mt-2.5 whitespace-pre-wrap leading-relaxed text-zinc-700 dark:text-zinc-200">
-            {concept.explanation}
-          </p>
+          <Markdown
+            content={concept.explanation}
+            className="mt-2.5 text-zinc-700 dark:text-zinc-200"
+          />
         )}
       </section>
     );

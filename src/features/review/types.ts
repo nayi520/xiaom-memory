@@ -18,5 +18,7 @@ export interface ReviewQueueItem {
   question: string;
   answer: string;
   conceptName: string;
+  /** 所属概念 id（JSON API 需要，页面渲染不依赖） */
+  conceptId: string;
   notes: SourceNote[];
 }

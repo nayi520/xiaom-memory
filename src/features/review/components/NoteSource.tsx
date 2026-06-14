@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import type { SourceNote } from '../types';
+import { Markdown } from '@/components/ui';
 
 const TYPE_ICON: Record<string, string> = {
   text: '✏️',
@@ -42,9 +43,7 @@ export default function NoteSource({ note }: { note: SourceNote }) {
         <span className="mt-0.5 shrink-0">{TYPE_ICON[note.type] ?? '📝'}</span>
         <div className="min-w-0 flex-1 space-y-1.5">
           {text && (
-            <p className="break-words leading-relaxed text-zinc-700 dark:text-zinc-200">
-              {text}
-            </p>
+            <Markdown content={text} className="text-zinc-700 dark:text-zinc-200" />
           )}
           {note.why_important && (
             <p className="text-xs text-zinc-400">💡 {note.why_important}</p>

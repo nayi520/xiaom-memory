@@ -18,7 +18,7 @@ import {
 import NoteAudio from '@/features/library/components/NoteAudio';
 import NoteTagEditor from '@/features/library/components/NoteTagEditor';
 import NoteDeleteButton from '@/features/capture/components/NoteDeleteButton';
-import { PageShell, SectionTitle, cardClass, cn } from '@/components/ui';
+import { PageShell, SectionTitle, Markdown, cardClass, cn } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '记录 · 小M' };
@@ -117,11 +117,7 @@ export default async function NoteDetailPage({
           <span>{STATUS_LABELS[note.status] ?? note.status}</span>
         </p>
 
-        {text && (
-          <p className="whitespace-pre-wrap break-words leading-relaxed text-zinc-800 dark:text-zinc-100">
-            {text}
-          </p>
-        )}
+        {text && <Markdown content={text} />}
 
         {note.url && (
           <a
@@ -164,9 +160,10 @@ export default async function NoteDetailPage({
       {note.summary && (
         <section className="mt-4 rounded-card border border-zinc-200/80 bg-white px-5 py-4 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
           <SectionTitle className="mb-1.5">AI 摘要</SectionTitle>
-          <p className="text-sm leading-relaxed text-zinc-700 dark:text-zinc-200">
-            {note.summary}
-          </p>
+          <Markdown
+            content={note.summary}
+            className="text-sm text-zinc-700 dark:text-zinc-200"
+          />
         </section>
       )}
 

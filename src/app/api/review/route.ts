@@ -14,11 +14,13 @@ export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/review —— 提交一次卡片自评（F3.1 / F3.3 / F3.5）
- * body: { cardId: string, rating: 1|2|3|4 }
+ * body: { cardId: string, grade: 1|2|3|4 }（兼容旧参数名 rating）
  * 流程：写 reviews 日志 → ts-fsrs 计算新 fsrs_state → 毕业判定 → 更新 cards
  *
  * 去 Supabase 改造：鉴权 getCurrentUser()，授权改应用层——
  * 卡片归属经 cards→concepts join 显式按 concepts.user_id 校验（原靠 RLS）。
+ *
+ * 返回：{ ok:true, nextDueAt }（iOS 契约）+ 兼容键 due/scheduledDays/graduated（PWA 沿用）。
  */
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
 
-  let body: { cardId?: unknown; rating?: unknown };
+  let body: { cardId?: unknown; grade?: unknown; rating?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -34,14 +36,15 @@ export async function POST(request: Request) {
   }
 
   const cardId = typeof body.cardId === 'string' ? body.cardId : null;
-  const rating = body.rating;
-  if (!cardId || ![1, 2, 3, 4].includes(rating as number)) {
+  // 优先取 grade（iOS 契约），兼容旧字段 rating（现有 PWA ReviewSession 仍在发）。
+  const grade = body.grade ?? body.rating;
+  if (!cardId || ![1, 2, 3, 4].includes(grade as number)) {
     return NextResponse.json(
-      { error: '参数错误：需要 cardId 与 rating(1-4)' },
+      { error: '参数错误：需要 cardId 与 grade(1-4)' },
       { status: 400 }
     );
   }
-  const ratingNum = rating as ReviewRating;
+  const ratingNum = grade as ReviewRating;
 
   const db = getDb();
 
@@ -106,6 +109,9 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
+    // iOS 契约字段：下次到期 ISO 时间。
+    nextDueAt: outcome.dueIso,
+    // 兼容字段（现有 PWA ReviewSession 读 graduated；due/scheduledDays 历史返回保留）。
     due: outcome.dueIso,
     scheduledDays: outcome.scheduledDays,
     graduated,
