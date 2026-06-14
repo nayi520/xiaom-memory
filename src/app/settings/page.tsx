@@ -3,6 +3,8 @@ import DigestNowButton from '@/features/digest/components/DigestNowButton';
 import WeeklyDigestPanel from '@/features/digest/components/WeeklyDigestPanel';
 import PushToggle from '@/features/review/components/PushToggle';
 import ReminderTimePicker from '@/features/review/components/ReminderTimePicker';
+import StatsPanel from '@/features/settings/components/StatsPanel';
+import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
 import { PageShell, SectionTitle, cardClass, cn } from '@/components/ui';
 
 export const metadata = { title: '设置 · 小M' };
@@ -17,6 +19,11 @@ export default function SettingsPage() {
       </header>
 
       <section className="space-y-2.5">
+        <SectionTitle className="mb-1">数据统计</SectionTitle>
+        <StatsPanel />
+      </section>
+
+      <section className="mt-9 space-y-2.5">
         <SectionTitle className="mb-1">AI 整理</SectionTitle>
         <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
           系统每晚 23:00（北京时间）自动整理当天记录。也可以现在手动触发。
@@ -36,6 +43,14 @@ export default function SettingsPage() {
         <SectionTitle className="mb-1">复习提醒</SectionTitle>
         <ReminderTimePicker />
         <PushToggle />
+      </section>
+
+      <section className="mt-9 space-y-2.5">
+        <SectionTitle className="mb-1">导出知识库</SectionTitle>
+        <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+          把整理后的概念（按领域 › 主题组织，附其下原始记录）导出为一份 Markdown 文件，方便备份或迁移。
+        </p>
+        <ExportMarkdownButton />
       </section>
 
       <section className="mt-9 space-y-2.5">
