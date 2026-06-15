@@ -1,5 +1,5 @@
-/* 小M · Service Worker：静态资源 cache-first，页面 network-first，Web Push 复习提醒 */
-const CACHE = 'memory-v2';
+/* 小M · Service Worker：静态资源 cache-first，页面 network-first，Web Push 复习提醒，离线捕获 Background Sync */
+const CACHE = 'memory-v3';
 const PRECACHE = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -69,18 +69,23 @@ self.addEventListener('push', (event) => {
     data = { body: event.data ? event.data.text() : '' };
   }
   const title = data.title || '小M';
+  const url = data.url || '/review';
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || '今天有卡片待复习',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
       tag: 'memory-review-reminder',
-      data: { url: data.url || '/review' },
+      // 同 tag 复盖旧通知但仍提示用户（避免堆叠、又不至于静默更新）。
+      renotify: true,
+      // 「去复习」操作按钮，一键直达（不支持 actions 的平台自动忽略）。
+      actions: [{ action: 'review', title: '去复习' }],
+      data: { url },
     })
   );
 });
 
-/* 点击通知 → 直达复习页 */
+/* 点击通知（或其操作按钮）→ 直达复习页：优先聚焦已开窗口并导航，否则新开。 */
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || '/review';
@@ -89,11 +94,145 @@ self.addEventListener('notificationclick', (event) => {
       .matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {
         for (const client of clientList) {
-          if (new URL(client.url).pathname === url && 'focus' in client) {
+          // 任一同源窗口：聚焦并导航到目标页（比仅匹配同 path 更稳，避免重复开窗）。
+          if ('focus' in client) {
+            if ('navigate' in client && new URL(client.url).pathname !== url) {
+              return client.focus().then((c) => (c && c.navigate ? c.navigate(url) : c));
+            }
             return client.focus();
           }
         }
         return self.clients.openWindow(url);
       })
   );
+});
+
+/* ===== 离线捕获 Background Sync（V10） =====
+ * 恢复网络后，浏览器触发 tag='mxiao-outbox-sync' 的 sync 事件。
+ * 这里直接回放 IndexedDB 队列（mxiao-offline/outbox）到 /api/notes、/api/clip，
+ * 覆盖「页面已关」的场景；同时 postMessage 通知在线页面刷新 UI。
+ * 队列结构与 src/features/offline/queue.ts 一致（keyPath: clientId）。
+ */
+const OUTBOX_DB = 'mxiao-offline';
+const OUTBOX_STORE = 'outbox';
+const OUTBOX_MAX_ATTEMPTS = 5;
+
+function openOutboxDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(OUTBOX_DB, 1);
+    // 不建库：库由前台页面创建。若不存在则照常打开（store 可能缺失，下方读取做容错）。
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function idbReq(req) {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function readPendingOutbox(db) {
+  if (!db.objectStoreNames.contains(OUTBOX_STORE)) return [];
+  const store = db.transaction(OUTBOX_STORE, 'readonly').objectStore(OUTBOX_STORE);
+  const all = (await idbReq(store.getAll())) || [];
+  return all.filter((i) => i && i.status === 'pending');
+}
+
+async function putOutbox(db, item) {
+  if (!db.objectStoreNames.contains(OUTBOX_STORE)) return;
+  const store = db.transaction(OUTBOX_STORE, 'readwrite').objectStore(OUTBOX_STORE);
+  await idbReq(store.put(item));
+}
+
+async function deleteOutbox(db, clientId) {
+  if (!db.objectStoreNames.contains(OUTBOX_STORE)) return;
+  const store = db.transaction(OUTBOX_STORE, 'readwrite').objectStore(OUTBOX_STORE);
+  await idbReq(store.delete(clientId));
+}
+
+async function replayOutbox() {
+  let db;
+  try {
+    db = await openOutboxDb();
+  } catch {
+    return 0;
+  }
+  let synced = 0;
+  let items;
+  try {
+    items = await readPendingOutbox(db);
+  } catch {
+    return 0;
+  }
+  for (const item of items) {
+    const endpoint = item.kind === 'clip' ? '/api/clip' : '/api/notes';
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // 注入幂等键，与前台同口径
+        body: JSON.stringify({ ...item.payload, client_id: item.clientId }),
+      });
+      if (res.ok) {
+        await deleteOutbox(db, item.clientId);
+        synced += 1;
+      } else if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+        // 客户端错误：标 failed，停自动重试
+        await putOutbox(db, {
+          ...item,
+          status: 'failed',
+          attempts: (item.attempts || 0) + 1,
+          lastError: `提交被拒绝（${res.status}）`,
+        });
+      } else {
+        const attempts = (item.attempts || 0) + 1;
+        await putOutbox(db, {
+          ...item,
+          attempts,
+          status: attempts >= OUTBOX_MAX_ATTEMPTS ? 'failed' : 'pending',
+          lastError: `服务暂不可用（${res.status}）`,
+        });
+      }
+    } catch {
+      const attempts = (item.attempts || 0) + 1;
+      await putOutbox(db, {
+        ...item,
+        attempts,
+        status: attempts >= OUTBOX_MAX_ATTEMPTS ? 'failed' : 'pending',
+        lastError: '网络错误',
+      });
+      // 网络仍不可用：终止本轮，等下次 sync 重试。
+      break;
+    }
+  }
+  return synced;
+}
+
+async function notifyClientsSync() {
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  for (const client of clients) {
+    client.postMessage({ type: 'mxiao-outbox-sync' });
+  }
+}
+
+async function handleOutboxSync() {
+  // 若有可见页面在线，交给页面 flush（避免 SW 与页面并发回放同一条 → 重复提交）；
+  // 否则（页面已关/后台）由 SW 直接回放队列。
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  const hasVisible = clients.some((c) => c.visibilityState === 'visible');
+  if (hasVisible) {
+    await notifyClientsSync();
+    return;
+  }
+  await replayOutbox().catch(() => 0);
+  // 回放后通知任何后台页面对账 UI（不会触发重复 flush，因其不可见时不主动 sync）。
+  await notifyClientsSync().catch(() => {});
+}
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'mxiao-outbox-sync') {
+    event.waitUntil(handleOutboxSync());
+  }
 });

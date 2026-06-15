@@ -4,6 +4,9 @@ import SwRegister from './sw-register';
 import BottomNav from '@/components/BottomNav';
 import AppShell from '@/components/AppShell';
 import CommandPalette from '@/components/CommandPalette';
+import { OfflineProvider } from '@/features/offline/OfflineProvider';
+import OfflineIndicator from '@/features/offline/OfflineIndicator';
+import InstallPrompt from '@/features/pwa/InstallPrompt';
 import { ThemeProvider, ToastProvider, themeInitScript } from '@/components/ui';
 
 export const metadata: Metadata = {
@@ -37,10 +40,14 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <ToastProvider>
-            <AppShell>{children}</AppShell>
-            <BottomNav />
-            <CommandPalette />
-            <SwRegister />
+            <OfflineProvider>
+              <AppShell>{children}</AppShell>
+              <BottomNav />
+              <CommandPalette />
+              <OfflineIndicator />
+              <InstallPrompt />
+              <SwRegister />
+            </OfflineProvider>
           </ToastProvider>
         </ThemeProvider>
       </body>

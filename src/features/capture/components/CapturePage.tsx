@@ -8,6 +8,7 @@ import VoiceCapture from './VoiceCapture';
 import LinkCapture from './LinkCapture';
 import RecentNotes from './RecentNotes';
 import DashboardPanel from './DashboardPanel';
+import { OUTBOX_SYNCED_EVENT } from '@/features/offline/OfflineProvider';
 import { PageShell, TextIcon, VoiceIcon, LinkIcon, AiIcon, useToast, cn } from '@/components/ui';
 import type { LucideIcon } from '@/components/ui';
 
@@ -22,21 +23,37 @@ export default function CapturePage() {
   const [recent, setRecent] = useState<RecentItem[]>([]);
   const { error: toastError, info: toastInfo } = useToast();
 
-  // 加载最近 3 条
-  useEffect(() => {
+  // 加载最近 3 条（保留本地仍待同步的离线占位，避免被服务端列表覆盖丢失）。
+  const refreshRecent = useCallback(() => {
     let cancelled = false;
     fetch('/api/notes?limit=3')
       .then((res) => (res.ok ? res.json() : { notes: [] }))
       .then((data: { notes?: Note[] }) => {
-        if (!cancelled && data.notes) setRecent(data.notes as RecentItem[]);
+        if (cancelled || !data.notes) return;
+        setRecent((prev) => {
+          const queued = prev.filter((n) => n.queued || n.pending);
+          const server = (data.notes as RecentItem[]).filter(
+            (s) => !queued.some((q) => q.id === s.id)
+          );
+          return [...queued, ...server].slice(0, 3);
+        });
       })
       .catch(() => {
-        /* 网络错误：最近列表留空 */
+        /* 网络错误：最近列表留空（离线占位仍在） */
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => refreshRecent(), [refreshRecent]);
+
+  // 离线队列同步完成 → 刷新最近列表（把「待同步」占位换成已落库记录）。
+  useEffect(() => {
+    const onSynced = () => refreshRecent();
+    window.addEventListener(OUTBOX_SYNCED_EVENT, onSynced);
+    return () => window.removeEventListener(OUTBOX_SYNCED_EVENT, onSynced);
+  }, [refreshRecent]);
 
   /** 乐观插入一条（提交瞬间调用） */
   const addOptimistic = useCallback((item: RecentItem) => {
@@ -80,12 +97,30 @@ export default function CapturePage() {
     [toastError]
   );
 
+  /**
+   * 离线入队标记：该条已写入本地队列、待联网同步。保留为占位（queued），
+   * 联网后由 OfflineProvider 自动同步并刷新列表替换为真实记录。
+   */
+  const queueNote = useCallback(
+    (tempId: string) => {
+      setRecent((prev) =>
+        prev.map((n) =>
+          n.id === tempId
+            ? { ...n, pending: false, failed: false, queued: true, retry: undefined }
+            : n
+        )
+      );
+      toastInfo('当前离线，已存入本地，联网后自动同步');
+    },
+    [toastInfo]
+  );
+
   /** 软删后从最近列表乐观移除（F5） */
   const removeNote = useCallback((id: string) => {
     setRecent((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
-  const handlers = { addOptimistic, confirmNote, updateNote, failNote };
+  const handlers = { addOptimistic, confirmNote, updateNote, failNote, queueNote };
 
   return (
     <PageShell width="wide">

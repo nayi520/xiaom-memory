@@ -77,6 +77,35 @@ const components: Components = {
     </pre>
   ),
   hr: () => <hr className="my-4 border-zinc-200 dark:border-zinc-700" />,
+  // 图片：懒加载 + 异步解码（降低长列表/详情页首屏成本）；
+  // 给一个浅底占位 + min-height，图未到时不塌缩、到达后平滑淡入，避免布局抖动（CLS）。
+  // 有显式 width/height 时透传，让浏览器据此预留尺寸。
+  img: ({ src, alt, width, height }) => {
+    if (!src) return null;
+    const reveal = (el: HTMLImageElement) => {
+      el.style.opacity = '1';
+      el.style.minHeight = '0';
+    };
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={typeof src === 'string' ? src : undefined}
+        alt={alt ?? ''}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+        className="my-2.5 h-auto max-w-full rounded-field border border-zinc-200/70 bg-zinc-100 object-contain opacity-0 transition-opacity duration-300 [min-height:6rem] dark:border-zinc-800 dark:bg-zinc-800/60"
+        // 兜底缓存命中：若图片在 onLoad 绑定前已 complete，挂载时直接显现，避免一直透明。
+        ref={(el) => {
+          if (el && el.complete && el.naturalWidth > 0) reveal(el);
+        }}
+        onLoad={(e) => reveal(e.currentTarget)}
+        // 加载失败：去掉占位高度并恢复可见，避免留下一块空白色块。
+        onError={(e) => reveal(e.currentTarget)}
+      />
+    );
+  },
 };
 
 /**

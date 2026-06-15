@@ -13,7 +13,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import type { LibraryGraph } from '../graph';
-import { EmptyState, LibraryIcon, SpinnerIcon, cn } from '@/components/ui';
+import {
+  EmptyState,
+  LibraryIcon,
+  SpinnerIcon,
+  Skeleton,
+  SkeletonCard,
+  cn,
+} from '@/components/ui';
 
 // 画布 client-only：禁用 SSR，加载期给占位（避免布局跳动）。
 const ConceptGraph = dynamic(() => import('./ConceptGraph'), {
@@ -119,11 +126,19 @@ export default function ConceptGraphPanel() {
   }, [graph, colorOf]);
 
   if (loading && !graph) {
+    // 取数态用骨架占位（统计行 + 图例 + 画布占位），与就绪结构同构、无布局跳动。
     return (
-      <div className="flex h-[60vh] min-h-[360px] w-full items-center justify-center rounded-card border border-zinc-200/80 bg-zinc-50/60 text-sm text-zinc-400 dark:border-zinc-800 dark:bg-zinc-900/40">
-        <SpinnerIcon aria-hidden className="mr-2 h-4 w-4 animate-spin" />
-        正在加载图谱…
-      </div>
+      <section className="space-y-3" role="status" aria-busy aria-label="正在加载图谱">
+        <div className="flex flex-wrap items-center gap-2">
+          <Skeleton className="h-4 w-40" />
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-20" />
+          ))}
+        </div>
+        <SkeletonCard className="h-[60vh] min-h-[360px] w-full" />
+      </section>
     );
   }
 

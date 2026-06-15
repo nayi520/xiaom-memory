@@ -1,24 +1,40 @@
 'use client';
 
 /**
- * 回收站单条记录的操作（PRD F5）：恢复 / 永久删除。
+ * 回收站单条记录的操作（PRD F5 + V10 乐观更新）：恢复 / 永久删除。
  *  - 恢复：PATCH /api/notes/[id] { action:'restore' } → deleted_at = null
  *  - 永久删除：DELETE /api/notes/[id]（二次确认，硬删 note 行；派生概念/卡片保留）
- * 操作成功后 router.refresh() 重新渲染服务端列表。
+ *
+ * 乐观更新：点击即由父列表把该条移除（瞬时反馈）；请求失败则回滚（复原该条）并弹 Toast。
+ *  - onOptimisticRemove()：立即从列表移除该条，返回是否成功发起（父侧记录待回滚）。
+ *  - onRollback()        ：请求失败时复原该条。
+ *  - onSettled()         ：成功落定（父侧清理回滚态）。
  */
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button, RestoreIcon, useToast } from '@/components/ui';
 
-export default function TrashItemActions({ noteId }: { noteId: string }) {
-  const router = useRouter();
+export default function TrashItemActions({
+  noteId,
+  onOptimisticRemove,
+  onRollback,
+  onSettled,
+}: {
+  noteId: string;
+  /** 立即从列表移除该条（乐观）。 */
+  onOptimisticRemove: () => void;
+  /** 失败时复原该条。 */
+  onRollback: () => void;
+  /** 成功落定。 */
+  onSettled?: () => void;
+}) {
   const { success, error: toastError } = useToast();
   const [busy, setBusy] = useState<null | 'restore' | 'purge'>(null);
   const [confirming, setConfirming] = useState(false);
 
   async function restore() {
     setBusy('restore');
+    onOptimisticRemove(); // 乐观：先移除
     try {
       const res = await fetch(`/api/notes/${noteId}`, {
         method: 'PATCH',
@@ -27,13 +43,15 @@ export default function TrashItemActions({ noteId }: { noteId: string }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        onRollback();
         toastError(data.error ?? `恢复失败（${res.status}）`);
         setBusy(null);
         return;
       }
       success('已恢复到知识库');
-      router.refresh();
+      onSettled?.();
     } catch (err) {
+      onRollback();
       toastError(err instanceof Error ? err.message : '网络错误');
       setBusy(null);
     }
@@ -41,17 +59,20 @@ export default function TrashItemActions({ noteId }: { noteId: string }) {
 
   async function purge() {
     setBusy('purge');
+    onOptimisticRemove(); // 乐观：先移除
     try {
       const res = await fetch(`/api/notes/${noteId}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        onRollback();
         toastError(data.error ?? `永久删除失败（${res.status}）`);
         setBusy(null);
         return;
       }
       success('已永久删除');
-      router.refresh();
+      onSettled?.();
     } catch (err) {
+      onRollback();
       toastError(err instanceof Error ? err.message : '网络错误');
       setBusy(null);
     }

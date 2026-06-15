@@ -9,35 +9,11 @@ import { and, desc, eq, isNotNull } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { notes } from '@/lib/db/schema';
-import TrashItemActions from '@/features/trash/components/TrashItemActions';
-import {
-  PageShell,
-  EmptyState,
-  NoteTypeIcon,
-  WhyIcon,
-  TrashIcon,
-  ChevronRight,
-} from '@/components/ui';
+import TrashList, { type TrashedNote } from '@/features/trash/components/TrashList';
+import { PageShell, ChevronRight } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '回收站 · 小M' };
-
-interface TrashedNote {
-  id: string;
-  type: string;
-  raw_content: string | null;
-  transcript: string | null;
-  url: string | null;
-  why_important: string | null;
-  summary: string | null;
-  deleted_at: string;
-}
-
-function preview(note: TrashedNote): string {
-  const text =
-    note.summary || note.raw_content || note.transcript || note.url || '';
-  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
-}
 
 export default async function TrashPage() {
   const user = await getCurrentUser();
@@ -86,43 +62,7 @@ export default async function TrashPage() {
         </p>
       </header>
 
-      {trashedNotes.length === 0 ? (
-        <EmptyState
-          icon={<TrashIcon aria-hidden className="h-7 w-7" />}
-          title="回收站是空的"
-          description="删除的记录会出现在这里，随时可以恢复。"
-        />
-      ) : (
-        <ul className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
-          {trashedNotes.map((note) => (
-            <li
-              key={note.id}
-              className="rounded-card border border-zinc-200/80 bg-white px-4 py-3.5 text-sm shadow-card dark:border-zinc-800 dark:bg-zinc-900"
-            >
-              <div className="flex items-start gap-2.5">
-                <span className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500">
-                  <NoteTypeIcon type={note.type} className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="break-words leading-relaxed text-zinc-700 dark:text-zinc-200">
-                    {preview(note) || '（无文字内容）'}
-                  </p>
-                  {note.why_important && (
-                    <p className="mt-1 flex items-start gap-1 text-xs text-zinc-400">
-                      <WhyIcon aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-amber-400" />
-                      <span className="min-w-0">{note.why_important}</span>
-                    </p>
-                  )}
-                  <p className="mt-1.5 text-xs text-zinc-400">
-                    删除于 {new Date(note.deleted_at).toLocaleString('zh-CN')}
-                  </p>
-                </div>
-              </div>
-              <TrashItemActions noteId={note.id} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <TrashList initialItems={trashedNotes} />
     </PageShell>
   );
 }

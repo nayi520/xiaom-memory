@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Button, useToast } from '@/components/ui';
+import { Button, Skeleton, useToast } from '@/components/ui';
 
 type Phase =
   | 'loading' // 检测中
@@ -145,12 +145,25 @@ export default function PushToggle() {
   }
 
   if (phase === 'loading') {
-    return <p className="text-xs text-zinc-400">检测推送支持…</p>;
+    // 检测推送支持：用骨架按钮占位（替代裸文字），与就绪态等高、无跳动。
+    return (
+      <div className="space-y-2" aria-busy aria-label="检测推送支持">
+        <Skeleton className="h-[3.25rem] w-full rounded-field" />
+        <Skeleton className="h-3 w-2/3" />
+      </div>
+    );
   }
   if (phase === 'unsupported') {
+    // iOS 且未添加到主屏：Web Push 在 iOS 仅 standalone 下可用，给出可执行引导。
+    const iosNeedsInstall =
+      typeof navigator !== 'undefined' &&
+      /iphone|ipad|ipod/i.test(navigator.userAgent) &&
+      !(window.navigator as unknown as { standalone?: boolean }).standalone;
     return (
-      <p className="text-xs text-zinc-400">
-        当前浏览器不支持 Web Push（iOS 需将小M添加到主屏幕后再开启）。
+      <p className="text-xs leading-relaxed text-zinc-400">
+        {iosNeedsInstall
+          ? '在 iPhone/iPad 上，先点底部「分享」→「添加到主屏幕」，再从主屏打开小M即可开启复习提醒。'
+          : '当前浏览器不支持 Web Push。'}
       </p>
     );
   }

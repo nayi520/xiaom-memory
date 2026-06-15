@@ -3,12 +3,14 @@
 import { useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
+import { enqueue, isOfflineQueueSupported } from '@/features/offline/queue';
 import { Button, Textarea, Input, PlusIcon } from '@/components/ui';
 
 export default function TextCapture({
   addOptimistic,
   confirmNote,
   failNote,
+  queueNote,
 }: CaptureHandlers) {
   const [content, setContent] = useState('');
   const [why, setWhy] = useState('');
@@ -20,15 +22,21 @@ export default function TextCapture({
     const temp = makeTempNote({ type: 'text', raw_content: text, why_important: whyImportant });
     addOptimistic(temp);
 
+    const body = { type: 'text', raw_content: text, why_important: whyImportant };
+
+    // 离线（且支持本地队列）：直接入队，不发请求，UI 标「待同步」。
+    if (isOfflineQueueSupported() && typeof navigator !== 'undefined' && !navigator.onLine) {
+      // 复用占位 id 作幂等键，让队列项与该占位一一对应。
+      await enqueue('note', body, temp.id).catch(() => {});
+      queueNote(temp.id);
+      return;
+    }
+
     try {
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'text',
-          raw_content: text,
-          why_important: whyImportant,
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.note) {
@@ -37,7 +45,13 @@ export default function TextCapture({
         failNote(temp.id, data.error || '保存失败，请重试', () => submit(text, whyImportant));
       }
     } catch {
-      failNote(temp.id, '网络错误，保存失败', () => submit(text, whyImportant));
+      // 网络错误（提交途中掉线/不稳）：落入本地队列兜底，不丢这条捕获。
+      if (isOfflineQueueSupported()) {
+        await enqueue('note', body, temp.id).catch(() => {});
+        queueNote(temp.id);
+      } else {
+        failNote(temp.id, '网络错误，保存失败', () => submit(text, whyImportant));
+      }
     }
   }
 

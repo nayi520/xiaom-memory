@@ -59,7 +59,9 @@ export default function RecentNotes({
               'group animate-fade-in rounded-card border bg-white px-4 py-3.5 text-sm shadow-card transition duration-200 dark:bg-zinc-900',
               item.failed
                 ? 'border-red-300 dark:border-red-900'
-                : 'border-zinc-200/80 dark:border-zinc-800',
+                : item.queued
+                  ? 'border-sky-300/70 dark:border-sky-900/70'
+                  : 'border-zinc-200/80 dark:border-zinc-800',
               item.pending && 'opacity-70'
             )}
           >
@@ -89,7 +91,13 @@ export default function RecentNotes({
                       保存中
                     </Badge>
                   )}
-                  {!item.pending && !item.failed && !item.hint && (
+                  {item.queued && (
+                    <Badge tone="sky">
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                      待同步
+                    </Badge>
+                  )}
+                  {!item.pending && !item.queued && !item.failed && !item.hint && (
                     <Badge tone="emerald">
                       <SuccessIcon aria-hidden className="h-3 w-3" />
                       已记下

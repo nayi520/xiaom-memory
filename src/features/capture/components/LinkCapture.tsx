@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
+import { enqueue, isOfflineQueueSupported } from '@/features/offline/queue';
 import { Button, Input, SpinnerIcon, LinkIcon, cn } from '@/components/ui';
 
 /** 规范化用户输入为可抓取 URL（缺协议补 https://）。 */
@@ -26,6 +27,7 @@ export default function LinkCapture({
   addOptimistic,
   confirmNote,
   failNote,
+  queueNote,
 }: CaptureHandlers) {
   const [url, setUrl] = useState('');
   const [why, setWhy] = useState('');
@@ -78,11 +80,20 @@ export default function LinkCapture({
     });
     addOptimistic(temp);
 
+    const body = { url: target, why_important: whyImportant };
+
+    // 离线：入队待同步，不发请求（联网后服务端再抓正文）。
+    if (isOfflineQueueSupported() && typeof navigator !== 'undefined' && !navigator.onLine) {
+      await enqueue('clip', body, temp.id).catch(() => {});
+      queueNote(temp.id);
+      return;
+    }
+
     try {
       const res = await fetch('/api/clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: target, why_important: whyImportant }),
+        body: JSON.stringify(body),
       });
       const result = await res.json();
       if (res.ok && result.note) {
@@ -93,7 +104,13 @@ export default function LinkCapture({
         );
       }
     } catch {
-      failNote(temp.id, '网络错误，剪藏失败', () => submit(target, whyImportant, knownTitle));
+      // 网络错误：落本地队列兜底，不丢这条剪藏。
+      if (isOfflineQueueSupported()) {
+        await enqueue('clip', body, temp.id).catch(() => {});
+        queueNote(temp.id);
+      } else {
+        failNote(temp.id, '网络错误，剪藏失败', () => submit(target, whyImportant, knownTitle));
+      }
     }
   }
 

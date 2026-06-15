@@ -4,6 +4,8 @@ import type { Note } from '@/lib/types';
 export type RecentItem = Note & {
   pending?: boolean;
   failed?: boolean;
+  /** 离线入队、待联网同步（与 pending「正在提交」区分；展示「待同步」徽标）。 */
+  queued?: boolean;
   hint?: string; // 如"转写中…"、"转写待配置"
   /** 失败时由录入组件挂上的重试回调（点「重试」再发一次同一请求）。 */
   retry?: () => void;
@@ -18,6 +20,8 @@ export interface CaptureHandlers {
   updateNote: (id: string, patch: Partial<RecentItem>) => void;
   /** 标记失败；可选 retry 回调挂到该条上，供「重试」按钮调用。 */
   failNote: (tempId: string, message?: string, retry?: () => void) => void;
+  /** 标记为「已离线入队、待同步」（联网后由后台自动同步）。 */
+  queueNote: (tempId: string) => void;
 }
 
 /** 构造乐观 UI 占位 note */
