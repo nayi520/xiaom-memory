@@ -6,6 +6,7 @@
  */
 
 import { isIP } from 'node:net';
+import { lookup } from 'node:dns/promises';
 
 /** 私网 / 环回 / 链路本地 / 保留网段判断（IPv4 + IPv6），命中即视为内网，拒绝抓取。 */
 export function isBlockedIp(ip: string): boolean {
@@ -107,4 +108,66 @@ function fromCodePointSafe(code: number): string | null {
   return Number.isFinite(code) && code > 0 && code < 0x110000
     ? String.fromCodePoint(code)
     : null;
+}
+
+/** 解析主机名的所有 A/AAAA 记录；任一落在内网即拒绝（防 DNS 伪装公网域名指向内网）。 */
+export async function hostResolvesToPublicIp(hostname: string): Promise<boolean> {
+  if (isIP(hostname)) return !isBlockedIp(hostname);
+  let records: { address: string }[];
+  try {
+    records = await lookup(hostname, { all: true });
+  } catch {
+    return false;
+  }
+  if (records.length === 0) return false;
+  return records.every((r) => !isBlockedIp(r.address));
+}
+
+/** safeFetch 因 SSRF 校验不过而拒绝时抛出。 */
+export class SsrfBlockedError extends Error {
+  constructor(message = 'URL 被 SSRF 安全策略拒绝') {
+    super(message);
+    this.name = 'SsrfBlockedError';
+  }
+}
+
+/**
+ * SSRF-safe fetch：对初始 URL 与**每一跳重定向**都做 协议白名单 + 主机公网 DNS 校验，
+ * 用 redirect:'manual' 手动跟随，杜绝「公网域名 302 跳内网 / 云元数据 169.254.169.254」绕过。
+ * 供 /api/clip 等需要抓取「用户提供 URL」的服务端调用（取代裸 fetch(url,{redirect:'follow'})）。
+ *
+ * @throws SsrfBlockedError 协议/主机非法、解析到内网、或重定向次数越界
+ */
+export async function safeFetch(
+  rawUrl: string,
+  opts: { signal?: AbortSignal; headers?: Record<string, string>; maxRedirects?: number } = {}
+): Promise<Response> {
+  const maxRedirects = opts.maxRedirects ?? 5;
+  let current = parseSafeUrl(rawUrl);
+  if (!current) throw new SsrfBlockedError('不允许的 URL（仅 http/https、禁内网）');
+
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    if (!(await hostResolvesToPublicIp(current.hostname))) {
+      throw new SsrfBlockedError('主机解析到内网地址');
+    }
+    const res = await fetch(current.toString(), {
+      signal: opts.signal,
+      redirect: 'manual', // 手动跟随：对每一跳都重新校验，避免重定向绕过
+      headers: opts.headers,
+    });
+    // 非 3xx：直接交给调用方。
+    if (res.status < 300 || res.status >= 400) return res;
+    // 3xx：对 Location 重新跑全套校验后再跟随。
+    const loc = res.headers.get('location');
+    if (!loc) return res;
+    try {
+      await res.body?.cancel();
+    } catch {
+      /* 释放上一跳响应体，忽略错误 */
+    }
+    const next = parseSafeUrl(new URL(loc, current.href).toString());
+    if (!next) throw new SsrfBlockedError('重定向目标非法（协议/主机）');
+    current = next;
+  }
+  throw new SsrfBlockedError('重定向次数过多');
 }

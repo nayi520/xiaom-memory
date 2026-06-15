@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { notes } from '@/lib/db/schema';
+import { safeFetch } from '@/lib/link-meta';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
@@ -39,14 +40,14 @@ export async function POST(request: Request) {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(url, {
+    // SSRF 加固：经 safeFetch 对初始 URL 与每一跳重定向做公网校验（取代裸 fetch + redirect:follow）。
+    const res = await safeFetch(url, {
       signal: controller.signal,
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml',
       },
-      redirect: 'follow',
     });
     clearTimeout(timer);
 

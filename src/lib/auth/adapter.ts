@@ -60,8 +60,10 @@ function toAdapterUser(row: typeof users.$inferSelect): AdapterUser {
     id: row.id,
     // 自建 users.email 可空，但 AdapterUser.email 为 string；magic link 场景必有值。
     email: row.email ?? '',
-    // 本项目不做邮箱验证态机，登录成功即视为已验证（用 createdAt 兜底）。
-    emailVerified: row.createdAt ?? null,
+    // 邮箱验证态：注册门禁加固后用真实列 email_verified。
+    // AdapterUser.emailVerified 语义是 Date|null（验证时间），这里把布尔映射成
+    // 「已验证 → createdAt 兜底时间 / 未验证 → null」，满足 Auth.js 类型与「已验证有值」语义。
+    emailVerified: row.emailVerified ? (row.createdAt ?? new Date()) : null,
   };
 }
 
@@ -74,9 +76,11 @@ export function DrizzleMinimalAdapter(): Adapter {
     async createUser(user) {
       const db = getDb();
       // Auth.js 传入的 user.id 可能是它生成的；本表用 defaultRandom，忽略传入 id 以库内 uuid 为准。
+      // emailVerified：Auth.js 在 magic link / OAuth 首登时可能带验证时间（非 null 即已验证）；
+      // 据此落 email_verified。邮箱+密码注册走 /api/register（显式传 null → false，再发验证邮件）。
       const [row] = await db
         .insert(users)
-        .values({ email: user.email })
+        .values({ email: user.email, emailVerified: user.emailVerified != null })
         .returning();
       // 同步建一行默认 profile（settings 默认 '{}'）。
       // 旧 Supabase 由 auth.users 触发器建 profile；自建鉴权改在此显式 upsert，
@@ -134,7 +138,9 @@ export function DrizzleMinimalAdapter(): Adapter {
       const db = getDb();
       await db
         .update(users)
-        .set({ appleSub: account.providerAccountId })
+        // Apple 登录视为已验证邮箱（Apple 已校验过身份），一并置 email_verified=true，
+        // 使 Apple 用户即便首次也不被「邮箱未验证」门禁拦住。
+        .set({ appleSub: account.providerAccountId, emailVerified: true })
         .where(eq(users.id, account.userId));
       // 返回值被 Auth.js 忽略
     },

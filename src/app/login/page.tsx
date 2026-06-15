@@ -1,6 +1,7 @@
 'use client';
 
-import { Suspense, useState, useTransition } from 'react';
+import { Suspense, useState, useTransition, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn as credentialsSignIn } from 'next-auth/react';
 import { emailSignIn, appleSignIn } from './actions';
@@ -85,6 +86,20 @@ const POST_LOGIN_REDIRECT = '/';
 /** 密码最小长度（与 /api/register、password.ts 保持一致）。 */
 const MIN_PASSWORD_LENGTH = 8;
 
+/** 法务页链接（注册同意条款用）。 */
+function LegalLinks() {
+  return (
+    <>
+      <Link href="/terms" className="font-medium text-brand hover:underline" target="_blank">
+        《用户协议》
+      </Link>
+      <Link href="/privacy" className="font-medium text-brand hover:underline" target="_blank">
+        《隐私政策》
+      </Link>
+    </>
+  );
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -92,42 +107,112 @@ function LoginForm() {
   const sent = searchParams.get('check') === 'email';
   // 登录错误回流（pages.error 指向 /login，Auth.js 带 ?error=...）。
   const authError = searchParams.get('error');
+  // 邮箱验证落地回流（/api/verify-email 重定向带 ?verified=1|invalid|expired）。
+  const verified = searchParams.get('verified');
 
   // 主表单：邮箱 + 密码；mode 在「登录 / 注册」间切换。
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // 注册增强字段：邀请码、同意条款、验证码。
+  const [inviteCode, setInviteCode] = useState('');
+  const [agree, setAgree] = useState(false);
+  const [captcha, setCaptcha] = useState<{ question: string; token: string } | null>(null);
+  const [captchaDisabled, setCaptchaDisabled] = useState(false);
+  const [captchaAnswer, setCaptchaAnswer] = useState('');
+
   const [errorMsg, setErrorMsg] = useState(authError ? authErrorMessage(authError) : '');
+  // 「邮箱未验证」专用提示态：展示重发入口。
+  const [needVerifyEmail, setNeedVerifyEmail] = useState<string | null>(
+    authError === 'EmailNotVerified' ? '' : null
+  );
+  // 验证邮件已发出 / 重发成功提示。
+  const [verifySentTo, setVerifySentTo] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  /** 邮箱+密码：登录走 signIn('credentials')，注册先调 /api/register 再自动登录。 */
+  /** 拉取一道验证码挑战（注册时用）。失败静默（验证码是次要防线）。 */
+  const loadCaptcha = useCallback(async () => {
+    try {
+      const res = await fetch('/api/captcha', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as
+        | { disabled?: boolean; question?: string; token?: string };
+      if (data.disabled) {
+        setCaptchaDisabled(true);
+        setCaptcha(null);
+      } else if (data.question && data.token) {
+        setCaptchaDisabled(false);
+        setCaptcha({ question: data.question, token: data.token });
+        setCaptchaAnswer('');
+      }
+    } catch {
+      /* 验证码不可用时不阻塞注册（服务端会据是否启用决定校验）。 */
+    }
+  }, []);
+
+  // 进入注册模式时拉取验证码。
+  useEffect(() => {
+    if (mode === 'signup' && !captcha && !captchaDisabled) {
+      void loadCaptcha();
+    }
+  }, [mode, captcha, captchaDisabled, loadCaptcha]);
+
+  /** 邮箱+密码：登录走 signIn('credentials')，注册先调 /api/register（成功后多走邮箱验证）。 */
   function handleCredentialsSubmit(e: React.FormEvent) {
     e.preventDefault();
     const mail = email.trim();
     if (!mail || !password) return;
-    if (mode === 'signup' && password.length < MIN_PASSWORD_LENGTH) {
-      setErrorMsg(`密码至少需要 ${MIN_PASSWORD_LENGTH} 位`);
-      return;
+    if (mode === 'signup') {
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        setErrorMsg(`密码至少需要 ${MIN_PASSWORD_LENGTH} 位`);
+        return;
+      }
+      if (!agree) {
+        setErrorMsg('请阅读并勾选同意《用户协议》和《隐私政策》');
+        return;
+      }
+      if (!captchaDisabled && (!captcha || captchaAnswer.trim() === '')) {
+        setErrorMsg('请先完成验证码');
+        return;
+      }
     }
     setErrorMsg('');
+    setNeedVerifyEmail(null);
     startTransition(async () => {
       try {
         if (mode === 'signup') {
-          // 1) 注册：POST /api/register。
+          // 1) 注册：POST /api/register（携带邀请码 / 同意 / 验证码）。
           const res = await fetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: mail, password }),
+            body: JSON.stringify({
+              email: mail,
+              password,
+              inviteCode: inviteCode.trim() || undefined,
+              agree,
+              captchaToken: captcha?.token,
+              captchaAnswer: captchaAnswer.trim() || undefined,
+            }),
           });
+          const data = (await res.json().catch(() => null)) as
+            | { ok?: boolean; needsVerification?: boolean; error?: string }
+            | null;
           if (!res.ok) {
-            const data = (await res.json().catch(() => null)) as { error?: string } | null;
             setErrorMsg(data?.error ?? '注册失败，请稍后重试。');
+            // 验证码错/过期：换一道新题，避免卡死。
+            if (!captchaDisabled) void loadCaptcha();
             return;
           }
-          // 2) 注册成功后自动登录（下沉到 signIn 流程，复用同一跳转逻辑）。
+          // 2) 注册成功：若需邮箱验证（默认），引导去验证，不自动登录。
+          if (data?.needsVerification) {
+            setVerifySentTo(mail);
+            setMode('signin');
+            return;
+          }
+          // 极少数情况（既有已验证账户补设密码）→ 直接尝试登录。
         }
 
-        // 登录（注册成功后亦走此分支）：redirect:false 以便就地处理错误。
+        // 登录：redirect:false 以便就地处理错误。
         const result = await credentialsSignIn('credentials', {
           email: mail,
           password,
@@ -135,6 +220,12 @@ function LoginForm() {
         });
 
         if (!result || result.error) {
+          // 邮箱未验证：Auth.js 回 error=CredentialsSignin + code=EmailNotVerified。
+          if (result?.code === 'EmailNotVerified') {
+            setNeedVerifyEmail(mail);
+            setErrorMsg('');
+            return;
+          }
           setErrorMsg(
             mode === 'signup'
               ? '注册成功，但自动登录失败，请直接登录。'
@@ -147,6 +238,39 @@ function LoginForm() {
         // 成功：刷新会话并跳转到落地页。
         router.replace(POST_LOGIN_REDIRECT);
         router.refresh();
+      } catch {
+        setErrorMsg('网络异常，请稍后重试。');
+      }
+    });
+  }
+
+  /** 重发验证邮件（邮箱未验证态 / 验证链接过期态下用）。限频由后端控制。 */
+  function handleResendVerification(targetEmail: string) {
+    const mail = (targetEmail || email).trim();
+    if (!mail) {
+      setErrorMsg('请先填写邮箱');
+      return;
+    }
+    setErrorMsg('');
+    startTransition(async () => {
+      try {
+        const res = await fetch('/api/resend-verification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: mail }),
+        });
+        if (res.status === 429) {
+          setErrorMsg('操作过于频繁，请稍后再试。');
+          return;
+        }
+        if (!res.ok) {
+          const data = (await res.json().catch(() => null)) as { error?: string } | null;
+          setErrorMsg(data?.error ?? '发送失败，请稍后重试。');
+          return;
+        }
+        // 始终成功外观（不暴露账户存在性）。
+        setVerifySentTo(mail);
+        setNeedVerifyEmail(null);
       } catch {
         setErrorMsg('网络异常，请稍后重试。');
       }
@@ -205,8 +329,55 @@ function LoginForm() {
           </div>
         ) : (
           <>
+            {/* 邮箱验证落地结果提示（点验证链接后回流）。 */}
+            {verified === '1' && (
+              <p className="mt-8 rounded-field border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400">
+                邮箱已验证成功，请登录。
+              </p>
+            )}
+            {(verified === 'expired' || verified === 'invalid') && (
+              <div className="mt-8 rounded-field border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
+                {verified === 'expired'
+                  ? '验证链接已过期。'
+                  : '验证链接无效或已被使用。'}
+                <button
+                  type="button"
+                  onClick={() => handleResendVerification(email)}
+                  disabled={isPending}
+                  className="ml-1 font-semibold underline disabled:opacity-60"
+                >
+                  重新发送验证邮件
+                </button>
+              </div>
+            )}
+
+            {/* 验证邮件已发送提示（注册成功 / 重发成功）。 */}
+            {verifySentTo && (
+              <div className="mt-8 animate-scale-in rounded-card border border-brand/15 bg-brand-light/70 p-5 text-center dark:border-brand/20 dark:bg-brand/10">
+                <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-brand shadow-card dark:bg-zinc-900">
+                  <MailIcon aria-hidden className="h-5 w-5" />
+                </div>
+                <p className="text-base font-semibold text-zinc-800 dark:text-zinc-100">
+                  验证邮件已发送
+                </p>
+                <p className="mt-1.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                  已向 {verifySentTo} 发送验证邮件，请查收并点击链接完成验证后再登录。
+                  <br />
+                  链接 24 小时内有效。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleResendVerification(verifySentTo)}
+                  disabled={isPending}
+                  className="mt-3 text-sm font-semibold text-brand hover:underline disabled:opacity-60"
+                >
+                  没收到？重新发送
+                </button>
+              </div>
+            )}
+
             {/* —— 主登录方式：邮箱 + 密码 —— */}
-            <form onSubmit={handleCredentialsSubmit} className="mt-10 space-y-4">
+            <form onSubmit={handleCredentialsSubmit} className="mt-8 space-y-4">
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-zinc-600 dark:text-zinc-400">
                   邮箱
@@ -235,13 +406,80 @@ function LoginForm() {
                   autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                 />
               </label>
+
+              {/* —— 注册专属：邀请码 + 验证码 + 同意条款 —— */}
+              {mode === 'signup' && (
+                <>
+                  <label className="block">
+                    <span className="mb-1.5 block text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                      邀请码
+                      <span className="ml-1 font-normal text-zinc-400">（如有）</span>
+                    </span>
+                    <Input
+                      type="text"
+                      value={inviteCode}
+                      onChange={(e) => setInviteCode(e.target.value)}
+                      placeholder="邀请码"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                    />
+                  </label>
+
+                  {!captchaDisabled && captcha && (
+                    <label className="block">
+                      <span className="mb-1.5 block text-sm font-medium text-zinc-600 dark:text-zinc-400">
+                        验证码
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="select-none rounded-field border border-zinc-200 bg-zinc-50 px-3 py-3 text-base font-semibold tabular-nums tracking-wide text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                          aria-label={`计算题 ${captcha.question}`}
+                        >
+                          {captcha.question}
+                        </span>
+                        <Input
+                          type="text"
+                          inputMode="numeric"
+                          value={captchaAnswer}
+                          onChange={(e) => setCaptchaAnswer(e.target.value)}
+                          placeholder="答案"
+                          autoComplete="off"
+                          className="flex-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void loadCaptcha()}
+                          className="shrink-0 rounded-field px-2 py-3 text-sm text-zinc-400 transition hover:text-brand"
+                          aria-label="换一题"
+                          title="换一题"
+                        >
+                          换一题
+                        </button>
+                      </div>
+                    </label>
+                  )}
+
+                  <label className="flex items-start gap-2 text-sm text-zinc-600 dark:text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={agree}
+                      onChange={(e) => setAgree(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-zinc-300 text-brand focus:ring-brand/30 dark:border-zinc-600 dark:bg-zinc-800"
+                    />
+                    <span className="leading-relaxed">
+                      我已阅读并同意 <LegalLinks />
+                    </span>
+                  </label>
+                </>
+              )}
+
               <Button type="submit" size="lg" fullWidth loading={isPending}>
                 {isPending
                   ? mode === 'signup'
                     ? '注册中…'
                     : '登录中…'
                   : mode === 'signup'
-                    ? '注册并登录'
+                    ? '注册'
                     : '登录'}
               </Button>
             </form>
@@ -254,12 +492,31 @@ function LoginForm() {
                 onClick={() => {
                   setMode((m) => (m === 'signin' ? 'signup' : 'signin'));
                   setErrorMsg('');
+                  setNeedVerifyEmail(null);
                 }}
                 className="font-semibold text-brand hover:underline"
               >
                 {mode === 'signin' ? '注册' : '去登录'}
               </button>
             </p>
+
+            {/* 邮箱未验证专用提示（登录被拒时）：给重发入口。 */}
+            {needVerifyEmail !== null && (
+              <div
+                role="alert"
+                className="mt-4 rounded-field border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+              >
+                请先验证邮箱后再登录。
+                <button
+                  type="button"
+                  onClick={() => handleResendVerification(needVerifyEmail || email)}
+                  disabled={isPending}
+                  className="ml-1 font-semibold underline disabled:opacity-60"
+                >
+                  重新发送验证邮件
+                </button>
+              </div>
+            )}
 
             {errorMsg && (
               <p
@@ -301,7 +558,7 @@ function LoginForm() {
         )}
 
         <p className="mt-10 text-center text-xs text-zinc-400 dark:text-zinc-600">
-          {mode === 'signup' ? '注册即表示同意创建账户' : '登录即表示同意继续使用'}
+          继续即表示同意 <LegalLinks />
         </p>
       </div>
     </main>

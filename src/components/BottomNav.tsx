@@ -19,7 +19,11 @@ import { useDueCount } from './useDueCount';
 
 export default function BottomNav() {
   const pathname = usePathname();
-  const hidden = pathname.startsWith('/login') || pathname.startsWith('/auth');
+  const hidden =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/terms') ||
+    pathname.startsWith('/privacy');
   const due = useDueCount();
 
   if (hidden) return null;

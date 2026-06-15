@@ -16,7 +16,7 @@
  * 环境变量见 DEPS.md：AUTH_SECRET、AUTH_URL、APPLE_*、DIRECTMAIL_*。
  */
 
-import NextAuth, { type NextAuthConfig } from 'next-auth';
+import NextAuth, { type NextAuthConfig, CredentialsSignin } from 'next-auth';
 import Apple from 'next-auth/providers/apple';
 import Credentials from 'next-auth/providers/credentials';
 import { eq } from 'drizzle-orm';
@@ -25,6 +25,15 @@ import { directMailProvider } from './email';
 import { verifyPassword, isValidEmail } from './password';
 import { getDb } from '@/lib/db/client';
 import { users } from '@/lib/db/schema';
+
+/**
+ * 邮箱未验证时抛出的凭证登录错误（注册门禁加固 · 登录门禁）。
+ * Auth.js 把 `code` 透传到回流 URL 的 ?code=，next-auth/react 的 signIn 返回 result.code，
+ * 登录页据此显示「请先验证邮箱」并提供重发入口。code 不含敏感信息（仅状态名）。
+ */
+class EmailNotVerifiedError extends CredentialsSignin {
+  code = 'EmailNotVerified';
+}
 
 /**
  * Auth.js 配置对象。
@@ -70,9 +79,14 @@ export const authConfig: NextAuthConfig = {
         if (!isValidEmail(email) || !password) return null;
 
         const db = getDb();
-        // 直接查库取 password_hash（adapter.toAdapterUser 不暴露哈希）。
+        // 直接查库取 password_hash + email_verified（adapter.toAdapterUser 不暴露哈希）。
         const [row] = await db
-          .select({ id: users.id, email: users.email, passwordHash: users.passwordHash })
+          .select({
+            id: users.id,
+            email: users.email,
+            passwordHash: users.passwordHash,
+            emailVerified: users.emailVerified,
+          })
           .from(users)
           .where(eq(users.email, email))
           .limit(1);
@@ -80,6 +94,13 @@ export const authConfig: NextAuthConfig = {
 
         const ok = await verifyPassword(password, row.passwordHash);
         if (!ok) return null;
+
+        // 登录门禁（注册门禁加固）：邮箱未验证一律拒绝登录，提示去验证 / 重发。
+        // 注意：密码正确才走到这里 → 抛 EmailNotVerified 不泄露「密码是否正确」给未注册者
+        //（未注册 / 密码错都在上面 return null）。Apple / magic link 用户 email_verified 已为 true。
+        if (!row.emailVerified) {
+          throw new EmailNotVerifiedError();
+        }
 
         // 仅返回稳定 id + email；jwt callback 据 user.id 注入 token.uid。
         return { id: row.id, email: row.email ?? email };

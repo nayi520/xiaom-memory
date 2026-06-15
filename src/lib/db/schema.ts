@@ -16,6 +16,7 @@ import {
   text,
   jsonb,
   integer,
+  boolean,
   timestamp,
   index,
   uniqueIndex,
@@ -71,6 +72,9 @@ export const users = pgTable(
     name: text('name'),
     // 头像在 OSS 的对象 key（私有 bucket，展示靠 getSignedUrl 现签）。可空：未设头像为 null。
     avatarKey: text('avatar_key'),
+    // 邮箱是否已验证。注册门禁加固（0003）：邮箱+密码注册建 false，点验证链接后置 true；
+    // Apple 登录视为已验证（linkAccount 时置 true）；迁移把现有行回填为 true，避免锁住老用户。
+    emailVerified: boolean('email_verified').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -80,6 +84,40 @@ export const users = pgTable(
     appleSubKey: uniqueIndex('users_apple_sub_key').on(t.appleSub),
   })
 );
+
+// ============ invite_codes：邀请制注册（注册门禁加固 0003） ============
+// REGISTRATION_MODE=invite 时，/api/register 必须带有效、未过期、used_count<max_uses 的码；
+// 注册成功在事务内 used_count+1。管理员发码：POST /api/admin/invite（Bearer ADMIN_SECRET）或 SQL 直插。
+export const inviteCodes = pgTable('invite_codes', {
+  // 邀请码字符串本身即主键（大小写敏感，生成时用无歧义字符集）。
+  code: text('code').primaryKey(),
+  // 备注（发给谁 / 用途），仅管理用，可空。
+  note: text('note'),
+  // 最多可用次数（默认 1，单次邀请）。
+  maxUses: integer('max_uses').notNull().default(1),
+  // 已用次数（事务内自增；used_count<max_uses 才算有效）。
+  usedCount: integer('used_count').notNull().default(0),
+  // 过期时间（可空 = 永不过期）。
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ============ email_verifications：邮箱验证一次性令牌（注册门禁加固 0003） ============
+// 注册时生成带过期的 token，邮件发链接 GET /api/verify-email?token=；校验后置 users.email_verified=true。
+// 一次性：用后即删（与 magic link 的 verification_tokens 同理，但按 user_id 关联、单列 token 主键）。
+export const emailVerifications = pgTable('email_verifications', {
+  // 不透明随机 token（主键）。绝不打印；过期 + 一次性。
+  token: text('token').primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 // ============ profiles：用户扩展（settings jsonb） ============
 export const profiles = pgTable('profiles', {
@@ -353,6 +391,9 @@ export const pushSubscriptions = pgTable(
 // ============ 表类型导出（供后续 Drizzle 查询层用） ============
 export type UserRow = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type InviteCodeRow = typeof inviteCodes.$inferSelect;
+export type NewInviteCode = typeof inviteCodes.$inferInsert;
+export type EmailVerificationRow = typeof emailVerifications.$inferSelect;
 export type ProfileRow = typeof profiles.$inferSelect;
 export type NoteRow = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;

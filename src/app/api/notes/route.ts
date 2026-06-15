@@ -89,6 +89,11 @@ export async function POST(request: Request) {
       : null;
   const mediaPath = typeof body.media_path === 'string' ? body.media_path : null;
 
+  // L-1 加固：media_path 必须落在本人 OSS 前缀下，防被构造成他人音频对象 key（越权）。
+  if (mediaPath && !mediaPath.startsWith(`audio/${user.id}/`)) {
+    return NextResponse.json({ error: 'media_path 非法' }, { status: 403 });
+  }
+
   // 文本类要求有正文；语音类要求有 media_path。
   if (type === 'text' && !rawContent?.trim()) {
     return NextResponse.json({ error: '文本内容不能为空' }, { status: 400 });

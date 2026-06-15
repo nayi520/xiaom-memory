@@ -55,6 +55,10 @@ export async function POST(request: Request) {
   if (!note || note.type !== 'voice' || !note.media_path) {
     return NextResponse.json({ error: '记录不存在或非语音' }, { status: 404 });
   }
+  // L-1 加固：纵深防御——只对本人 OSS 前缀的音频签名，杜绝越权转写他人音频对象。
+  if (!note.media_path.startsWith(`audio/${user.id}/`)) {
+    return NextResponse.json({ error: '记录不存在或非语音' }, { status: 404 });
+  }
 
   // 取给 Fun-ASR 拉取音频用的公网签名 URL。OSS 未配置时优雅降级。
   let audioUrl: string;

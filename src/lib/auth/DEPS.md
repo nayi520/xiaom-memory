@@ -35,6 +35,36 @@ create table if not exists verification_tokens (
 > 现有 `users` 表（id / email / apple_sub / created_at）**无需改动**：magic link 按 email upsert，Apple 把 `sub` 落 `apple_sub`。
 > JWT session 策略 → **不需要** `sessions` / `accounts` 表。
 
+### 注册门禁加固新增（迁移 `drizzle/0003_registration_hardening.sql`，已纳入版本库）
+
+- `users.email_verified boolean not null default false`——邮箱验证态；**迁移把现有行回填为 true**（不锁老用户）。
+- `invite_codes(code pk, note, max_uses int default 1, used_count int default 0, expires_at, created_at)`——邀请制注册。
+- `email_verifications(token pk, user_id → users.id, expires_at, created_at)`——邮箱验证一次性令牌。
+
+发邀请码两种方式：
+
+1. 端点：`POST /api/admin/invite`，头 `Authorization: Bearer $ADMIN_SECRET`，体（可选）
+   `{ note?, maxUses?, expiresInDays?, code? }` → 返回 `{ code, ... }`。
+2. **SQL 直插兜底**（RDS 直接执行）：
+
+   ```sql
+   insert into invite_codes (code, note, max_uses, expires_at)
+   values ('FRIEND-2026A', '发给老王', 1, now() + interval '30 days');
+   -- 永不过期：expires_at 省略 / null。多次可用：调大 max_uses。
+   ```
+
+### 注册门禁相关环境变量
+
+| 变量 | 必填 | 说明 |
+|---|---|---|
+| `REGISTRATION_MODE` | 选填 | `open` / `invite`（默认）/ `closed`。缺省或非法值按 `invite`。 |
+| `ADMIN_SECRET` | 启用发码端点时 | `POST /api/admin/invite` 的 Bearer 密钥。`openssl rand -hex 32`。不配则只能 SQL 直插发码。 |
+| `CAPTCHA_SECRET` | 选填 | 注册验证码（签名算术挑战）签名密钥；缺省回落 `AUTH_SECRET`。 |
+| `CAPTCHA_DISABLED` | 选填 | 设 `1`/`true` 关闭注册验证码（默认启用）。 |
+
+> 验证码为**无状态签名挑战**（`lib/auth/captcha.ts`，零依赖、不落库），是邀请制之外的次要防线。
+> 邮箱验证发信复用既有 `sendMail()`（DirectMail）；公开端点 `/api/verify-email`、`/api/resend-verification`、`/api/captcha`、`/api/admin` 已加入 middleware `PUBLIC_PATHS`。
+
 ## 三、需要的环境变量
 
 写进 `.env`（不入库，占位即可，联调时填真值）。

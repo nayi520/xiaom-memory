@@ -14,12 +14,29 @@ import { auth } from '@/lib/auth/edge';
 
 /** 无需登录即可访问的路径前缀：
  *  - /login：登录页
+ *  - /terms、/privacy：法务页（用户协议 / 隐私政策，注册前可读）
  *  - /auth：历史路径占位（旧 Supabase 回调已删，保留前缀避免误拦截）
  *  - /api/auth：Auth.js 端点（magic link 回调 / session / csrf / signout 等）
- *  - /api/register：邮箱+密码注册（未登录态调用，自行做输入校验 + 限频）
+ *  - /api/register：邮箱+密码注册（未登录态调用，自行做输入校验 + 限频 + 门禁）
+ *  - /api/verify-email：邮箱验证落地（点邮件链接，未登录访问）
+ *  - /api/resend-verification：重发验证邮件（未登录访问，自行限频）
+ *  - /api/captcha：下发签名算术挑战（注册验证码，未登录访问）
+ *  - /api/admin：管理端点（用 Bearer ADMIN_SECRET 自行鉴权，如发邀请码）
  *  - /api/cron：用 Bearer CRON_SECRET 自行鉴权
  */
-const PUBLIC_PATHS = ['/login', '/auth', '/api/auth', '/api/register', '/api/cron'];
+const PUBLIC_PATHS = [
+  '/login',
+  '/terms',
+  '/privacy',
+  '/auth',
+  '/api/auth',
+  '/api/register',
+  '/api/verify-email',
+  '/api/resend-verification',
+  '/api/captcha',
+  '/api/admin',
+  '/api/cron',
+];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;

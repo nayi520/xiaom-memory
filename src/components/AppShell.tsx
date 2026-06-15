@@ -19,8 +19,12 @@ import SidebarNav from './SidebarNav';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  // 登录 / 历史鉴权占位路径：不套壳。
-  const bare = pathname.startsWith('/login') || pathname.startsWith('/auth');
+  // 登录 / 历史鉴权占位 / 法务页（注册前可读）：不套壳。
+  const bare =
+    pathname.startsWith('/login') ||
+    pathname.startsWith('/auth') ||
+    pathname.startsWith('/terms') ||
+    pathname.startsWith('/privacy');
 
   if (bare) return <>{children}</>;
 
