@@ -82,9 +82,21 @@ export interface LlmClient {
   text(prompt: string, opts: LlmCallOpts): Promise<string>;
   /** JSON 输出，解析失败自动重试 1 次，再失败抛 LlmJsonError */
   json<T>(prompt: string, opts: LlmCallOpts): Promise<T>;
+  /**
+   * 流式文本输出（V9 问答 SSE）：逐 token 产出 Markdown/纯文本片段。
+   * createAnthropicClient 走 DashScope stream:true 透传；
+   * 由 buildLlmClient 构造的客户端（如测试 mock）回退为「一次性产出整段」，
+   * 行为与 text() 等价，便于脱离网络测试，调用方无需区分。
+   */
+  textStream(prompt: string, opts: LlmCallOpts): AsyncIterable<string>;
 }
 
 export type TextCompletionFn = (prompt: string, opts: LlmCallOpts) => Promise<string>;
+/** 底层流式补全：逐片段产出文本（DashScope SSE 透传用）。可选，缺省回退非流式。 */
+export type StreamCompletionFn = (
+  prompt: string,
+  opts: LlmCallOpts
+) => AsyncIterable<string>;
 
 // ============ JSON 宽松解析 ============
 
@@ -111,11 +123,27 @@ export function parseJsonLoose<T>(raw: string): T {
 // ============ 客户端构造 ============
 
 /**
- * 由底层文本补全函数构造 LlmClient（json 重试逻辑在此实现，便于脱离网络测试）
+ * 由底层文本补全函数构造 LlmClient（json 重试逻辑在此实现，便于脱离网络测试）。
+ *
+ * @param complete 必填，非流式文本补全。
+ * @param stream   选填，底层流式补全。未提供时 textStream() 回退为「调 complete 取整段、
+ *                 一次性产出」，行为与 text() 等价——保证旧调用方与 mock 测试零改动。
  */
-export function buildLlmClient(complete: TextCompletionFn): LlmClient {
+export function buildLlmClient(
+  complete: TextCompletionFn,
+  stream?: StreamCompletionFn
+): LlmClient {
   return {
     text: (prompt, opts) => complete(prompt, opts),
+
+    textStream(prompt, opts): AsyncIterable<string> {
+      if (stream) return stream(prompt, opts);
+      // 回退：无底层流式实现时，取整段后一次性产出（测试 mock / 旧路径仍可用）。
+      return (async function* () {
+        const full = await complete(prompt, opts);
+        if (full) yield full;
+      })();
+    },
 
     async json<T>(prompt: string, opts: LlmCallOpts): Promise<T> {
       // 标记 jsonMode，让底层 complete 启用 response_format:json_object
@@ -155,12 +183,9 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
         `[llm] task=${u.task} model=${u.model} in=${u.inputTokens} out=${u.outputTokens}`
       ));
 
-  const complete: TextCompletionFn = async (prompt, opts) => {
-    const apiKey = process.env.DASHSCOPE_API_KEY;
-    if (!apiKey) throw new LlmKeyMissingError();
-
+  // 构造 DashScope 请求体（complete / stream 共用）。
+  function buildRequestBody(prompt: string, opts: LlmCallOpts): Record<string, unknown> {
     const model = CLAUDE_MODELS[opts.model];
-
     // OpenAI 兼容消息：system（可选）+ user。json() 路径已确保 prompt/system 含 "JSON" 字样。
     const messages: { role: 'system' | 'user'; content: string }[] = [];
     if (opts.system) messages.push({ role: 'system', content: opts.system });
@@ -171,6 +196,15 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
     if (opts.jsonMode) body.response_format = { type: 'json_object' };
     // 注意：不设 max_tokens，避免长输出被截断。
     if (opts.maxTokens) body.max_tokens = opts.maxTokens;
+    return body;
+  }
+
+  const complete: TextCompletionFn = async (prompt, opts) => {
+    const apiKey = process.env.DASHSCOPE_API_KEY;
+    if (!apiKey) throw new LlmKeyMissingError();
+
+    const model = CLAUDE_MODELS[opts.model];
+    const body = buildRequestBody(prompt, opts);
 
     const res = await fetch(DASHSCOPE_CHAT_URL, {
       method: 'POST',
@@ -209,5 +243,89 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
     return text;
   };
 
-  return buildLlmClient(complete);
+  // 流式补全：DashScope OpenAI 兼容 SSE（stream:true），逐 chunk 透传 delta.content。
+  // 每行 `data: {json}`，以 `data: [DONE]` 结束；用量在 stream_options 末帧回报（best-effort 记录）。
+  const stream: StreamCompletionFn = (prompt, opts) =>
+    (async function* () {
+      const apiKey = process.env.DASHSCOPE_API_KEY;
+      if (!apiKey) throw new LlmKeyMissingError();
+
+      const model = CLAUDE_MODELS[opts.model];
+      const body = {
+        ...buildRequestBody(prompt, opts),
+        stream: true,
+        // 让末帧带 usage，便于成本统计（兼容端点支持；不支持则忽略，不影响透传）。
+        stream_options: { include_usage: true },
+      };
+
+      const res = await fetch(DASHSCOPE_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok || !res.body) {
+        const detail = res.body ? await res.text() : '';
+        throw new Error(
+          `DashScope API ${res.status}（task=${opts.task}，stream）：${detail.slice(0, 300)}`
+        );
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let usage: { prompt_tokens?: number; completion_tokens?: number } | undefined;
+
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          // 按行解析 SSE：累计到换行才处理，剩余半行留在 buffer。
+          let nl: number;
+          while ((nl = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line || !line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (payload === '[DONE]') {
+              buffer = '';
+              break;
+            }
+            let evt: {
+              choices?: { delta?: { content?: string } }[];
+              usage?: { prompt_tokens?: number; completion_tokens?: number };
+            };
+            try {
+              evt = JSON.parse(payload);
+            } catch {
+              continue; // 跳过无法解析的心跳/注释行
+            }
+            if (evt.usage) usage = evt.usage;
+            const delta = evt.choices?.[0]?.delta?.content;
+            if (delta) yield delta;
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+
+      try {
+        await logUsage({
+          task: opts.task,
+          model,
+          inputTokens: usage?.prompt_tokens ?? 0,
+          outputTokens: usage?.completion_tokens ?? 0,
+        });
+      } catch (err) {
+        console.error('[llm] usage 日志写入失败：', err);
+      }
+    })();
+
+  return buildLlmClient(complete, stream);
 }
