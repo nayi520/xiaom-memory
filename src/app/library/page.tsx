@@ -1,13 +1,16 @@
 /**
- * 知识库（F4.1 + F4.2）
- * 领域 → 主题 → 概念 → 原始记录 四层下钻（后两层在概念详情页），每层显示数量。
- * 顶部单一搜索框：关键词 ILIKE + 标签精确 + pgvector 语义，合并去重标注来源。
- * 下钻状态用 searchParams 表达（?domain=&topic=），移动端返回手势/返回键天然可用。
+ * 知识库（F4.1 + F4.2 + V8）
+ * 三种浏览模式（顶部切换，?view=）：
+ *   - drill（默认）：领域 → 主题 → 概念 → 原始记录 四层下钻（桌面主从双栏 + 领域左栏）。
+ *   - tree        ：领域 → 主题 聚合总览（分组卡片 + 数量徽标），一屏俯瞰整库结构。
+ *   - graph       ：概念关系图谱（力导向图，client-only canvas，按领域着色、点击跳概念）。
+ * 顶部单一搜索框：混合检索（关键词 ILIKE + 标签精确 + pgvector 语义，融合排序），
+ *   支持 ?domain= 领域筛选 与 ?mode= 检索模式，结果区提供筛选 chips。
+ * 下钻 / 搜索状态用 searchParams 表达，移动端返回手势/返回键天然可用。
  *
  * 响应式：
  *   移动（< lg）：单列下钻——根层显示领域卡片，再逐层进入主题/概念，配合面包屑返回。
- *   桌面（lg+） ：主从双栏——左侧常驻「领域」导航面板（当前领域高亮），右侧显示该领域下的
- *                 主题 / 概念列表；横向空间得到利用，不再是手机窄列居中。
+ *   桌面（lg+） ：drill 模式主从双栏——左侧常驻「领域」导航面板，右侧主题/概念列表。
  */
 
 import Link from 'next/link';
@@ -15,8 +18,9 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { concepts as conceptsTable, noteConcepts, notes } from '@/lib/db/schema';
-import { runLibrarySearch } from '@/features/library/search';
+import { normalizeMode, runLibrarySearch, type SearchMode } from '@/features/library/search';
 import SearchResults from '@/features/library/components/SearchResults';
+import ConceptGraphPanel from '@/features/library/components/ConceptGraphPanel';
 import {
   PageShell,
   EmptyState,
@@ -34,6 +38,17 @@ export const metadata = { title: '知识库 · 小M' };
 
 const UNCATEGORIZED = '未分类';
 
+type ViewMode = 'drill' | 'tree' | 'graph';
+function normalizeView(raw: string | undefined): ViewMode {
+  return raw === 'tree' || raw === 'graph' ? raw : 'drill';
+}
+
+const MODE_LABELS: Record<SearchMode, string> = {
+  hybrid: '混合',
+  keyword: '关键词',
+  semantic: '语义',
+};
+
 interface ConceptRow {
   id: string;
   name: string;
@@ -49,7 +64,7 @@ interface DomainSummary {
 }
 
 interface Props {
-  searchParams: { q?: string; domain?: string; topic?: string };
+  searchParams: { q?: string; domain?: string; topic?: string; view?: string; mode?: string };
 }
 
 export default async function LibraryPage({ searchParams }: Props) {
@@ -58,15 +73,27 @@ export default async function LibraryPage({ searchParams }: Props) {
   const q = (searchParams.q ?? '').trim();
   const domain = searchParams.domain?.trim() || null;
   const topic = searchParams.topic?.trim() || null;
+  const view = normalizeView(searchParams.view);
+  const mode = normalizeMode(searchParams.mode);
 
-  // ---- 搜索模式 ----
+  // ---- 搜索模式（优先级最高；domain 作为筛选条件，mode 选择检索路） ----
   if (q) {
     const result = user
-      ? await runLibrarySearch(db, user.id, q)
+      ? await runLibrarySearch(db, user.id, { q, domain, mode })
       : { hits: [], semanticUsed: false };
+    // 取领域清单供筛选 chips（与下钻同口径：本人全部概念的去重领域）。
+    const domainOptions = user ? await listDomains(db, user.id) : [];
     return (
-      <Shell q={q} domains={[]} activeDomain={null}>
-        <SearchResults q={q} hits={result.hits} semanticUsed={result.semanticUsed} />
+      <Shell q={q} view={view} domains={[]} activeDomain={null}>
+        <SearchResults
+          q={q}
+          hits={result.hits}
+          semanticUsed={result.semanticUsed}
+          domain={domain}
+          mode={mode}
+          domainOptions={domainOptions}
+          modeLabels={MODE_LABELS}
+        />
       </Shell>
     );
   }
@@ -74,13 +101,22 @@ export default async function LibraryPage({ searchParams }: Props) {
   // 未登录：空库（中间件已会拦截，这里仅类型与降级兜底）
   if (!user) {
     return (
-      <Shell q={q} domains={[]} activeDomain={null}>
+      <Shell q={q} view={view} domains={[]} activeDomain={null}>
         <DrillList empty="请先登录。" items={[]} />
       </Shell>
     );
   }
 
-  // ---- 下钻模式：一次取全量概念 + 记录关联数（个人库数据量小，内存聚合即可） ----
+  // ---- 图谱模式：client-only 力导向图（自行取数 /api/library/graph） ----
+  if (view === 'graph') {
+    return (
+      <Shell q={q} view={view} domains={[]} activeDomain={null}>
+        <ConceptGraphPanel />
+      </Shell>
+    );
+  }
+
+  // ---- 取全量概念 + 记录关联数（个人库数据量小，内存聚合即可；drill/tree 共用） ----
   // 显式按 user_id 过滤（原靠 RLS）；note_concepts 内连接 notes 过滤 deleted_at is null：
   // 回收站内的记录不计入条数。note_concepts 经 concept join 限定到本人概念。
   const [conceptData, ncData] = await Promise.all([
@@ -132,11 +168,21 @@ export default async function LibraryPage({ searchParams }: Props) {
     concepts: info.concepts,
   }));
 
-  // ---- 第三层：概念列表 ----
+  // ---- 聚合总览模式：领域 → 主题 分组（数量徽标），一屏俯瞰 ----
+  if (view === 'tree') {
+    const groups = buildDomainTopicGroups(concepts, noteCount, domainOf, topicOf);
+    return (
+      <Shell q={q} view={view} domains={[]} activeDomain={null}>
+        <AggregatedView groups={groups} />
+      </Shell>
+    );
+  }
+
+  // ---- 下钻 · 第三层：概念列表 ----
   if (domain && topic) {
     const list = concepts.filter((c) => domainOf(c) === domain && topicOf(c) === topic);
     return (
-      <Shell q={q} domains={domains} activeDomain={domain}>
+      <Shell q={q} view={view} domains={domains} activeDomain={domain}>
         <Breadcrumb
           parts={[
             { label: domain, href: `/library?domain=${encodeURIComponent(domain)}` },
@@ -157,7 +203,7 @@ export default async function LibraryPage({ searchParams }: Props) {
     );
   }
 
-  // ---- 第二层：主题列表 ----
+  // ---- 下钻 · 第二层：主题列表 ----
   if (domain) {
     const topics = new Map<string, number>();
     for (const c of concepts) {
@@ -166,7 +212,7 @@ export default async function LibraryPage({ searchParams }: Props) {
       topics.set(t, (topics.get(t) ?? 0) + 1);
     }
     return (
-      <Shell q={q} domains={domains} activeDomain={domain}>
+      <Shell q={q} view={view} domains={domains} activeDomain={domain}>
         <Breadcrumb parts={[{ label: domain }]} />
         <DrillList
           empty="该领域下还没有主题"
@@ -182,9 +228,9 @@ export default async function LibraryPage({ searchParams }: Props) {
     );
   }
 
-  // ---- 第一层：领域列表（移动端卡片；桌面端左栏已列出领域，右侧给引导） ----
+  // ---- 下钻 · 第一层：领域列表（移动端卡片；桌面端左栏已列出领域，右侧给引导） ----
   return (
-    <Shell q={q} domains={domains} activeDomain={null}>
+    <Shell q={q} view={view} domains={domains} activeDomain={null}>
       {/* 桌面：未选领域时，右侧给一条引导（左栏已是完整领域列表，避免重复罗列） */}
       <div className="hidden lg:block">
         {domains.length === 0 ? (
@@ -218,19 +264,80 @@ export default async function LibraryPage({ searchParams }: Props) {
   );
 }
 
-// ============ 布局壳：标题 + 搜索框 + 桌面领域左栏 ============
+// ============ 取数小工具 ============
+
+/** 本人全部概念的去重领域清单（按名称排序，未分类置末）。 */
+async function listDomains(
+  db: ReturnType<typeof getDb>,
+  userId: string
+): Promise<string[]> {
+  const rows = await db
+    .select({ domain: conceptsTable.domain })
+    .from(conceptsTable)
+    .where(eq(conceptsTable.userId, userId));
+  const set = new Set<string>();
+  for (const r of rows) {
+    const d = r.domain?.trim();
+    if (d) set.add(d);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}
+
+interface TopicGroup {
+  name: string;
+  concepts: { id: string; title: string; noteCount: number }[];
+}
+interface DomainGroup {
+  name: string;
+  conceptCount: number;
+  topics: TopicGroup[];
+}
+
+/** 领域 → 主题 → 概念 分组（概念按记录数降序、再按名称；用于聚合总览）。 */
+function buildDomainTopicGroups(
+  concepts: ConceptRow[],
+  noteCount: Map<string, number>,
+  domainOf: (c: ConceptRow) => string,
+  topicOf: (c: ConceptRow) => string
+): DomainGroup[] {
+  const map = new Map<string, Map<string, { id: string; title: string; noteCount: number }[]>>();
+  for (const c of concepts) {
+    const d = domainOf(c);
+    const t = topicOf(c);
+    if (!map.has(d)) map.set(d, new Map());
+    const topics = map.get(d)!;
+    if (!topics.has(t)) topics.set(t, []);
+    topics.get(t)!.push({ id: c.id, title: c.name, noteCount: noteCount.get(c.id) ?? 0 });
+  }
+  return Array.from(map.entries())
+    .map(([name, topics]) => {
+      const topicGroups: TopicGroup[] = Array.from(topics.entries()).map(([tName, list]) => ({
+        name: tName,
+        concepts: list.sort((a, b) => b.noteCount - a.noteCount || a.title.localeCompare(b.title, 'zh-CN')),
+      }));
+      const conceptCount = topicGroups.reduce((sum, t) => sum + t.concepts.length, 0);
+      return { name, conceptCount, topics: topicGroups.sort((a, b) => b.concepts.length - a.concepts.length) };
+    })
+    .sort((a, b) => b.conceptCount - a.conceptCount);
+}
+
+// ============ 布局壳：标题 + 视图切换 + 搜索框 + 桌面领域左栏 ============
 
 function Shell({
   q,
+  view,
   domains,
   activeDomain,
   children,
 }: {
   q: string;
+  view: ViewMode;
   domains: DomainSummary[];
   activeDomain: string | null;
   children: React.ReactNode;
 }) {
+  // 搜索态、tree/graph 视图不分栏；仅 drill 下钻态在桌面用「领域左栏 + 内容」主从布局。
+  const railed = !q && view === 'drill' && domains.length > 0;
   return (
     <PageShell width="full">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3 lg:mb-6">
@@ -238,7 +345,7 @@ function Shell({
           <h1 className="text-2xl font-bold tracking-tight text-zinc-900 lg:text-3xl dark:text-zinc-50">
             知识库
           </h1>
-          <p className="mt-1 text-sm text-zinc-400">AI 整理后的概念，按领域 › 主题 › 概念下钻</p>
+          <p className="mt-1 text-sm text-zinc-400">AI 整理后的概念，可下钻 / 俯瞰 / 看关系图谱</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Link
@@ -258,6 +365,9 @@ function Shell({
         </div>
       </header>
 
+      {/* 视图切换（搜索态隐藏，避免与结果筛选混淆） */}
+      {!q && <ViewSwitcher view={view} />}
+
       <form action="/library" method="get" className="mb-5 lg:max-w-xl">
         <div className="relative">
           <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-zinc-400">
@@ -274,16 +384,118 @@ function Shell({
         </div>
       </form>
 
-      {/* 搜索态不分栏（结果占满）；下钻态在桌面用「领域左栏 + 内容」主从布局。 */}
-      {q || domains.length === 0 ? (
-        <div className="flex-1">{children}</div>
-      ) : (
+      {railed ? (
         <div className="flex-1 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-8">
           <DomainRail domains={domains} active={activeDomain} />
           <div className="min-w-0">{children}</div>
         </div>
+      ) : (
+        <div className="flex-1">{children}</div>
       )}
     </PageShell>
+  );
+}
+
+// ============ 视图切换 tabs（下钻 / 聚合 / 图谱） ============
+
+function ViewSwitcher({ view }: { view: ViewMode }) {
+  const tabs: { key: ViewMode; label: string; href: string }[] = [
+    { key: 'drill', label: '下钻', href: '/library' },
+    { key: 'tree', label: '聚合', href: '/library?view=tree' },
+    { key: 'graph', label: '图谱', href: '/library?view=graph' },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="浏览模式"
+      className="mb-4 inline-flex rounded-field border border-zinc-200 bg-white p-0.5 shadow-sm dark:border-zinc-700 dark:bg-zinc-900"
+    >
+      {tabs.map((t) => {
+        const active = view === t.key;
+        return (
+          <Link
+            key={t.key}
+            href={t.href}
+            role="tab"
+            aria-selected={active}
+            className={cn(
+              'rounded-[10px] px-3.5 py-1.5 text-sm font-medium transition duration-150 ease-smooth focus-visible:outline-none',
+              active
+                ? 'bg-brand text-white shadow-sm'
+                : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-100'
+            )}
+          >
+            {t.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============ 聚合总览（领域 → 主题，数量徽标） ============
+
+function AggregatedView({ groups }: { groups: DomainGroup[] }) {
+  if (groups.length === 0) {
+    return (
+      <EmptyState
+        icon={<LibraryIcon aria-hidden className="h-7 w-7" />}
+        title="知识库还是空的"
+        description="先去记点东西，AI 整理后会自动归类到这里。"
+      />
+    );
+  }
+  return (
+    <div className="space-y-5">
+      {groups.map((d) => (
+        <section
+          key={d.name}
+          className={cn(cardClass({ padded: false }), 'overflow-hidden')}
+        >
+          <header className="flex items-center justify-between gap-3 border-b border-zinc-100 px-4 py-3 dark:border-zinc-800">
+            <Link
+              href={`/library?domain=${encodeURIComponent(d.name)}`}
+              className="min-w-0 truncate text-base font-bold text-zinc-900 transition hover:text-brand dark:text-zinc-50 dark:hover:text-brand-100"
+            >
+              {d.name}
+            </Link>
+            <span className="shrink-0 rounded-pill bg-zinc-100 px-2 py-0.5 text-xs font-medium tabular-nums text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+              {d.topics.length} 主题 · {d.conceptCount} 概念
+            </span>
+          </header>
+          <div className="space-y-3 px-4 py-3.5">
+            {d.topics.map((t) => (
+              <div key={t.name}>
+                <div className="mb-1.5 flex items-center gap-2">
+                  <Link
+                    href={`/library?domain=${encodeURIComponent(d.name)}&topic=${encodeURIComponent(t.name)}`}
+                    className="text-sm font-semibold text-zinc-600 transition hover:text-brand dark:text-zinc-300 dark:hover:text-brand-100"
+                  >
+                    {t.name}
+                  </Link>
+                  <span className="text-xs tabular-nums text-zinc-400">{t.concepts.length}</span>
+                </div>
+                <ul className="flex flex-wrap gap-1.5">
+                  {t.concepts.map((c) => (
+                    <li key={c.id}>
+                      <Link
+                        href={`/library/concept/${c.id}`}
+                        className="inline-flex items-center gap-1 rounded-pill border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-700 transition hover:border-brand hover:text-brand dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-brand"
+                      >
+                        <span className="max-w-[12rem] truncate">{c.title}</span>
+                        {c.noteCount > 0 && (
+                          <span className="tabular-nums text-zinc-400">{c.noteCount}</span>
+                        )}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 

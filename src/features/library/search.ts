@@ -1,21 +1,26 @@
 /**
- * 知识库搜索（F4.2）—— 去 Supabase 改造（Drizzle 数据访问）
+ * 知识库搜索（F4.2 + V8 混合检索升级）—— 去 Supabase 改造（Drizzle 数据访问）
  *
- * 单一搜索框，三路并行：
+ * 单一搜索框，多路并行后融合排序：
  * 1. 关键词：ILIKE 多字段匹配（notes.raw_content/summary/why_important、
  *    concepts.name/summary）。无中文分词，MVP 用此退化方案，pg_trgm 索引提速。
  * 2. 标签：tags.name 精确匹配 → 关联 notes。
  * 3. 语义：query 算 embedding → 对 concepts.embedding 的 pgvector cosine 查询。
  *    未配置 DASHSCOPE_API_KEY 时优雅降级，只跑关键词与标签。
  *
+ * V8 升级（向后兼容）：
+ *   - 第三参数可继续传字符串 q（旧调用零改动），也可传 { q, domain?, mode? } 选项对象。
+ *   - domain：仅返回该领域下的概念，以及「关联概念落在该领域」的记录（按 note_concepts→concepts.domain）。
+ *   - mode：'hybrid'（默认，关键词+标签+语义全跑）/ 'keyword'（仅关键词+标签）/ 'semantic'（仅语义）。
+ *
  * 授权改应用层：concepts/notes/tags 各路均显式按 user_id 过滤（原靠 RLS）。
  * 结果合并去重（mergeHits 为纯函数，scripts/test-search.ts 覆盖），
  * 每条标注命中来源（关键词 / 标签 / 语义）。
  */
 
-import { and, eq, ilike, isNull, sql } from 'drizzle-orm';
+import { and, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
-import { concepts, noteTags, notes, tags } from '@/lib/db/schema';
+import { concepts, noteConcepts, noteTags, notes, tags } from '@/lib/db/schema';
 import { embed, EmbeddingKeyMissingError } from '@/lib/embeddings';
 
 // ============ 类型 ============
@@ -46,8 +51,26 @@ export interface SearchHit extends RawHit {
 
 export interface LibrarySearchResult {
   hits: SearchHit[];
-  /** 本次是否跑了语义检索（未配 OPENAI_API_KEY 时为 false） */
+  /** 本次是否跑了语义检索（未配 DASHSCOPE_API_KEY / mode=keyword 时为 false） */
   semanticUsed: boolean;
+}
+
+/** 检索模式：混合（默认）/ 仅关键词+标签 / 仅语义 */
+export type SearchMode = 'hybrid' | 'keyword' | 'semantic';
+
+export const SEARCH_MODES: SearchMode[] = ['hybrid', 'keyword', 'semantic'];
+
+export function normalizeMode(raw: string | null | undefined): SearchMode {
+  return raw === 'keyword' || raw === 'semantic' ? raw : 'hybrid';
+}
+
+/** V8 检索选项（向后兼容：旧调用直接传字符串 q）。 */
+export interface LibrarySearchOptions {
+  q: string;
+  /** 领域筛选（仅返回该领域概念 + 关联到该领域的记录）。 */
+  domain?: string | null;
+  /** 检索模式，默认 'hybrid'。 */
+  mode?: SearchMode;
 }
 
 // ============ 纯函数：合并去重 ============
@@ -179,35 +202,39 @@ function iso(v: Date | string): string {
 export async function runLibrarySearch(
   db: Database,
   userId: string,
-  q: string
+  input: string | LibrarySearchOptions
 ): Promise<LibrarySearchResult> {
-  const query = q.trim();
+  // 向后兼容：第三参数可为字符串 q，或 { q, domain?, mode? } 选项对象。
+  const opts: LibrarySearchOptions =
+    typeof input === 'string' ? { q: input } : input;
+  const query = opts.q.trim();
   if (!query) return { hits: [], semanticUsed: false };
+  const domain = opts.domain?.trim() || null;
+  const mode = opts.mode ?? 'hybrid';
+  const runKeyword = mode === 'hybrid' || mode === 'keyword';
+  const runSemantic = mode === 'hybrid' || mode === 'semantic';
   const pattern = `%${escapeIlike(query)}%`;
 
-  // ---- 关键词（ILIKE 多字段） + 标签精确匹配，并行 ----
-  // concepts/notes/tags 均显式按 user_id 过滤（原靠 RLS）；
-  // notes 各路排除软删记录（deleted_at is null），回收站内容不进搜索结果。
-  const [cName, cSummary, nRaw, nSummary, nWhy, tagRes] = await Promise.all([
-    db.select(conceptCols).from(concepts)
-      .where(and(eq(concepts.userId, userId), ilike(concepts.name, pattern)))
-      .limit(KEYWORD_LIMIT),
-    db.select(conceptCols).from(concepts)
-      .where(and(eq(concepts.userId, userId), ilike(concepts.summary, pattern)))
-      .limit(KEYWORD_LIMIT),
-    db.select(noteCols).from(notes)
-      .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.rawContent, pattern)))
-      .limit(KEYWORD_LIMIT),
-    db.select(noteCols).from(notes)
-      .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.summary, pattern)))
-      .limit(KEYWORD_LIMIT),
-    db.select(noteCols).from(notes)
-      .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.whyImportant, pattern)))
-      .limit(KEYWORD_LIMIT),
-    db.select({ id: tags.id }).from(tags)
-      .where(and(eq(tags.userId, userId), eq(tags.name, query)))
-      .limit(1),
-  ]);
+  // domain 过滤：先取该领域下的本人概念 id 集合（用于过滤关键词/语义的概念命中），
+  // 以及该领域概念关联的记录 id 集合（用于过滤记录命中）。domain 为空则不限制。
+  const domainConceptIds = new Set<string>();
+  const domainNoteIds = new Set<string>();
+  if (domain) {
+    const dConcepts = await db
+      .select({ id: concepts.id })
+      .from(concepts)
+      .where(and(eq(concepts.userId, userId), eq(concepts.domain, domain)));
+    for (const c of dConcepts) domainConceptIds.add(c.id);
+    if (domainConceptIds.size > 0) {
+      const dNotes = await db
+        .select({ note_id: noteConcepts.noteId })
+        .from(noteConcepts)
+        .where(inArray(noteConcepts.conceptId, Array.from(domainConceptIds)));
+      for (const n of dNotes) domainNoteIds.add(n.note_id);
+    }
+  }
+  const keepConcept = (id: string) => !domain || domainConceptIds.has(id);
+  const keepNote = (id: string) => !domain || domainNoteIds.has(id);
 
   const toConcept = (r: { id: string; name: string; summary: string | null; created_at: Date | string }) =>
     conceptToHit({ id: r.id, name: r.name, summary: r.summary, created_at: iso(r.created_at) });
@@ -216,37 +243,67 @@ export async function runLibrarySearch(
     summary: string | null; why_important: string | null; url: string | null; created_at: Date | string;
   }) => noteToHit({ ...r, created_at: iso(r.created_at) });
 
-  const keywordHits: RawHit[] = [
-    ...cName.map(toConcept),
-    ...cSummary.map(toConcept),
-    ...nRaw.map(toNote),
-    ...nSummary.map(toNote),
-    ...nWhy.map(toNote),
-  ];
-
-  // ---- 标签命中的记录（join notes + deleted_at is null：排除软删记录） ----
+  // ---- 关键词（ILIKE 多字段） + 标签精确匹配，并行（mode=semantic 时跳过） ----
+  // concepts/notes/tags 均显式按 user_id 过滤（原靠 RLS）；
+  // notes 各路排除软删记录（deleted_at is null），回收站内容不进搜索结果。
+  let keywordHits: RawHit[] = [];
   let tagHits: RawHit[] = [];
-  const tagId = tagRes[0]?.id;
-  if (tagId) {
-    const rows = await db
-      .select(noteCols)
-      .from(noteTags)
-      .innerJoin(notes, eq(notes.id, noteTags.noteId))
-      .where(and(eq(noteTags.tagId, tagId), eq(notes.userId, userId), isNull(notes.deletedAt)));
-    tagHits = rows.map(toNote);
+  if (runKeyword) {
+    const [cName, cSummary, nRaw, nSummary, nWhy, tagRes] = await Promise.all([
+      db.select(conceptCols).from(concepts)
+        .where(and(eq(concepts.userId, userId), ilike(concepts.name, pattern)))
+        .limit(KEYWORD_LIMIT),
+      db.select(conceptCols).from(concepts)
+        .where(and(eq(concepts.userId, userId), ilike(concepts.summary, pattern)))
+        .limit(KEYWORD_LIMIT),
+      db.select(noteCols).from(notes)
+        .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.rawContent, pattern)))
+        .limit(KEYWORD_LIMIT),
+      db.select(noteCols).from(notes)
+        .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.summary, pattern)))
+        .limit(KEYWORD_LIMIT),
+      db.select(noteCols).from(notes)
+        .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.whyImportant, pattern)))
+        .limit(KEYWORD_LIMIT),
+      db.select({ id: tags.id }).from(tags)
+        .where(and(eq(tags.userId, userId), eq(tags.name, query)))
+        .limit(1),
+    ]);
+
+    keywordHits = [
+      ...cName.filter((r) => keepConcept(r.id)).map(toConcept),
+      ...cSummary.filter((r) => keepConcept(r.id)).map(toConcept),
+      ...nRaw.filter((r) => keepNote(r.id)).map(toNote),
+      ...nSummary.filter((r) => keepNote(r.id)).map(toNote),
+      ...nWhy.filter((r) => keepNote(r.id)).map(toNote),
+    ];
+
+    // 标签命中的记录（join notes + deleted_at is null：排除软删记录）
+    const tagId = tagRes[0]?.id;
+    if (tagId) {
+      const rows = await db
+        .select(noteCols)
+        .from(noteTags)
+        .innerJoin(notes, eq(notes.id, noteTags.noteId))
+        .where(and(eq(noteTags.tagId, tagId), eq(notes.userId, userId), isNull(notes.deletedAt)));
+      tagHits = rows.filter((r) => keepNote(r.id)).map(toNote);
+    }
   }
 
-  // ---- 语义（无 DASHSCOPE_API_KEY 时优雅降级） ----
+  // ---- 语义（无 DASHSCOPE_API_KEY 时优雅降级；mode=keyword 时跳过） ----
   let semanticHits: RawHit[] = [];
   let semanticUsed = false;
-  try {
-    const vector = await embed(query);
-    semanticHits = await semanticSearch(db, userId, vector);
-    semanticUsed = true;
-  } catch (err) {
-    if (!(err instanceof EmbeddingKeyMissingError)) {
-      // 语义检索故障不阻塞关键词结果，只记日志
-      console.error('[library] 语义检索失败：', err instanceof Error ? err.message : err);
+  if (runSemantic) {
+    try {
+      const vector = await embed(query);
+      const rows = await semanticSearch(db, userId, vector);
+      semanticHits = rows.filter((r) => keepConcept(r.id));
+      semanticUsed = true;
+    } catch (err) {
+      if (!(err instanceof EmbeddingKeyMissingError)) {
+        // 语义检索故障不阻塞关键词结果，只记日志
+        console.error('[library] 语义检索失败：', err instanceof Error ? err.message : err);
+      }
     }
   }
 

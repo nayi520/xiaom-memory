@@ -12,7 +12,12 @@
  * 6. escapeIlike 转义 % _ \
  */
 
-import { mergeHits, escapeIlike, type RawHit } from '../src/features/library/search';
+import {
+  mergeHits,
+  escapeIlike,
+  normalizeMode,
+  type RawHit,
+} from '../src/features/library/search';
 
 let failed = 0;
 
@@ -120,6 +125,18 @@ console.log('6. ILIKE 转义');
 {
   assert(escapeIlike('100%_\\a') === '100\\%\\_\\\\a', '% _ \\ 均被转义', escapeIlike('100%_\\a'));
   assert(escapeIlike('拖延') === '拖延', '普通中文不变');
+}
+
+// ---- 7. normalizeMode（V8 混合检索：向后兼容） ----
+console.log('7. 检索模式归一化');
+{
+  assert(normalizeMode('keyword') === 'keyword', 'keyword 透传');
+  assert(normalizeMode('semantic') === 'semantic', 'semantic 透传');
+  assert(normalizeMode('hybrid') === 'hybrid', 'hybrid 透传');
+  // 未传 / 非法值 → 默认 hybrid（旧调用不带 mode 仍走混合检索）。
+  assert(normalizeMode(null) === 'hybrid', 'null → hybrid');
+  assert(normalizeMode(undefined) === 'hybrid', 'undefined → hybrid');
+  assert(normalizeMode('bogus') === 'hybrid', '非法值 → hybrid');
 }
 
 // ---- 汇总 ----

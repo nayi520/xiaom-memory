@@ -1,19 +1,22 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
-import { runLibrarySearch } from '@/features/library/search';
+import { normalizeMode, runLibrarySearch } from '@/features/library/search';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * GET /api/library/search?q= —— 知识库搜索（JSON，供 iOS 原生端用）
+ * GET /api/library/search?q=&domain=&mode= —— 知识库混合检索（JSON，供 iOS / PWA 用）
  *
- * 契约：{ results: [{ kind: "note"|"concept", id, title, snippet }] }
+ * 契约（向后兼容）：{ results: [{ kind: "note"|"concept", id, title, snippet }] }
+ *   - q       ：查询串（空 → 空结果）。
+ *   - domain  ：可选，仅返回该领域的概念 + 关联到该领域的记录（旧调用不传 → 不限制）。
+ *   - mode    ：可选，'hybrid'(默认) / 'keyword' / 'semantic'（旧调用不传 → hybrid）。
  *   沿用 features/library/search.ts 的 runLibrarySearch：关键词 ILIKE + 标签精确 + pgvector 语义，
- *   合并去重后按（来源数 → 相似度 → 时间）排序。无 DASHSCOPE_API_KEY 时语义路自动降级（只跑关键词+标签）。
+ *   合并去重后按（来源数 → 相似度 → 时间）融合排序。无 DASHSCOPE_API_KEY 时语义路自动降级。
  *   注：合并结果的 sources/similarity 等内部字段不进契约，仅返回 kind/id/title/snippet。
  *
- * 鉴权 getCurrentUser()，授权严格按当前 userId 过滤。q 为空返回空结果。
+ * 鉴权 getCurrentUser()，授权严格按当前 userId 过滤。
  */
 export async function GET(request: Request) {
   const user = await getCurrentUser();
@@ -21,12 +24,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
 
-  const q = (new URL(request.url).searchParams.get('q') ?? '').trim();
+  const params = new URL(request.url).searchParams;
+  const q = (params.get('q') ?? '').trim();
   if (!q) {
     return NextResponse.json({ results: [] });
   }
+  const domain = (params.get('domain') ?? '').trim() || null;
+  const mode = normalizeMode(params.get('mode'));
 
-  const { hits } = await runLibrarySearch(getDb(), user.id, q);
+  const { hits } = await runLibrarySearch(getDb(), user.id, { q, domain, mode });
 
   return NextResponse.json({
     results: hits.map((h) => ({
