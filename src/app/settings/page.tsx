@@ -4,6 +4,8 @@ import WeeklyDigestPanel from '@/features/digest/components/WeeklyDigestPanel';
 import PushToggle from '@/features/review/components/PushToggle';
 import ReminderTimePicker from '@/features/review/components/ReminderTimePicker';
 import StatsPanel from '@/features/settings/components/StatsPanel';
+import ReviewHeatmap from '@/features/review/components/ReviewHeatmap';
+import ReviewDailyGoalPicker from '@/features/review/components/ReviewDailyGoalPicker';
 import ProfileCard from '@/features/settings/components/ProfileCard';
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
 import {
@@ -39,6 +41,12 @@ export default function SettingsPage() {
         <StatsPanel />
       </section>
 
+      {/* 复习统计：年度热力图 + 保留率 + 今日已复习（横跨整宽） */}
+      <section className="mt-9 space-y-2.5">
+        <SectionTitle className="mb-1">复习统计</SectionTitle>
+        <ReviewHeatmap />
+      </section>
+
       {/* 其余设置项：桌面双栏铺开，移动端单列堆叠 */}
       <div className="mt-9 grid gap-9 lg:grid-cols-2 lg:gap-x-10 lg:gap-y-10">
         <section className="space-y-2.5">
@@ -64,6 +72,7 @@ export default function SettingsPage() {
 
         <section className="space-y-3">
           <SectionTitle className="mb-1">复习提醒</SectionTitle>
+          <ReviewDailyGoalPicker />
           <ReminderTimePicker />
           <PushToggle />
         </section>

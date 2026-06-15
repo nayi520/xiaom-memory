@@ -21,6 +21,7 @@ import {
   ReviewIcon,
   LibraryIcon,
   NoteIcon,
+  GoalIcon,
   ChevronRight,
   cn,
 } from '@/components/ui';
@@ -34,9 +35,16 @@ interface Stats {
   streak: number;
 }
 
+/** 今日复习目标进度（来自 /api/review/stats + /api/settings，可选，失败则不显示）。 */
+interface GoalInfo {
+  todayCount: number;
+  goal: number;
+}
+
 export default function DashboardPanel({ className }: { className?: string }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState(false);
+  const [goalInfo, setGoalInfo] = useState<GoalInfo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +65,29 @@ export default function DashboardPanel({ className }: { className?: string }) {
     };
   }, []);
 
+  // 今日已复习 / 每日目标（次要信息，独立拉取；任一失败就不显示该行，不影响主面板）。
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      fetch('/api/review/stats').then((r) => (r.ok ? r.json() : null)),
+      fetch('/api/settings').then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([rs, settings]) => {
+        if (cancelled) return;
+        const todayCount = rs?.todayCount;
+        const goal = settings?.settings?.reviewDailyGoal;
+        if (typeof todayCount === 'number' && typeof goal === 'number' && goal > 0) {
+          setGoalInfo({ todayCount, goal });
+        }
+      })
+      .catch(() => {
+        /* 次要信息失败：不显示目标进度，静默 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 加载失败：整块静默隐藏，不打扰捕获主流程（首页核心是记录）。
   if (error) return null;
 
@@ -70,6 +101,9 @@ export default function DashboardPanel({ className }: { className?: string }) {
         <StreakCard streak={stats?.streak ?? 0} loading={loading} empty={empty} />
         <DueCard due={stats?.dueCount ?? 0} loading={loading} />
       </div>
+
+      {/* 今日复习目标进度（有目标信息时才显示） */}
+      {goalInfo && <DailyGoalRow todayCount={goalInfo.todayCount} goal={goalInfo.goal} />}
 
       {/* 知识概览 */}
       <div>
@@ -142,6 +176,44 @@ function StreakCard({
               : '今天还没记，记一条续上'}
         </p>
       )}
+    </div>
+  );
+}
+
+/** 今日复习目标进度行：今日已复习 / 目标 + 进度条。达成时变绿。 */
+function DailyGoalRow({ todayCount, goal }: { todayCount: number; goal: number }) {
+  const reached = todayCount >= goal;
+  const pct = Math.min(100, Math.round((todayCount / goal) * 100));
+  return (
+    <div className="rounded-card border border-zinc-200/80 bg-white px-4 py-3 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mb-1.5 flex items-center justify-between text-xs">
+        <span className="inline-flex items-center gap-1.5 font-medium text-zinc-500 dark:text-zinc-400">
+          <GoalIcon aria-hidden className="h-3.5 w-3.5 text-emerald-500" />
+          今日复习目标
+        </span>
+        <span className="tabular-nums text-zinc-500 dark:text-zinc-400">
+          {todayCount} / {goal}
+          {reached && ' · 已达成 🎉'}
+        </span>
+      </div>
+      <div
+        className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-200/70 dark:bg-zinc-800"
+        role="progressbar"
+        aria-valuenow={Math.min(todayCount, goal)}
+        aria-valuemin={0}
+        aria-valuemax={goal}
+        aria-label="今日复习目标进度"
+      >
+        <div
+          className={cn(
+            'h-full rounded-full transition-all duration-300 ease-smooth',
+            reached
+              ? 'bg-gradient-to-r from-emerald-400 to-emerald-500'
+              : 'bg-gradient-to-r from-amber-300 to-amber-400'
+          )}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
     </div>
   );
 }

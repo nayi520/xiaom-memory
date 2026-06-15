@@ -48,6 +48,13 @@ import {
   CornerDownLeft,
   ArrowUp,
   ArrowDown,
+  Target,
+  Zap,
+  EyeOff,
+  Keyboard,
+  Save,
+  CalendarClock,
+  Home,
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
@@ -95,6 +102,13 @@ export {
   CornerDownLeft as EnterIcon,
   ArrowUp as ArrowUpIcon,
   ArrowDown as ArrowDownIcon,
+  Target as GoalIcon,
+  Zap as ComboIcon,
+  EyeOff as SuspendIcon,
+  Keyboard as KeyboardIcon,
+  Save as SaveIcon,
+  CalendarClock as DueIcon,
+  Home as HomeIcon,
 };
 
 /** 记录类型 → 图标组件（一处定义，替代各页重复的 TYPE_ICON emoji 表）。 */
