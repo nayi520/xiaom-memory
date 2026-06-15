@@ -5,6 +5,7 @@ import { createAnthropicClient } from '@/lib/llm';
 import { embed } from '@/lib/embeddings';
 import { runDigestForUser } from '@/features/digest/pipeline';
 import { createDigestStore } from '@/features/digest/store';
+import { consumeQuota } from '@/lib/quota';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -24,6 +25,16 @@ export async function POST() {
     return NextResponse.json(
       { error: '未配置 DASHSCOPE_API_KEY，AI 整理不可用' },
       { status: 503 }
+    );
+  }
+
+  // 成本/滥用闸：手动「立即整理」会对每个概念调 embedding + 多次 LLM，是 embedding 的主成本面。
+  // 按 userId 记 embedding 每日配额（计「整理一次」为一次额度），超额回 429 友好降级，不跑流水线。
+  const quota = await consumeQuota(user.id, 'embedding');
+  if (!quota.ok) {
+    return NextResponse.json(
+      { error: '今日额度已用尽', kind: 'embedding', limit: quota.limit },
+      { status: 429 }
     );
   }
 

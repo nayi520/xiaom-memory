@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { createAnthropicClient } from '@/lib/llm';
 import { embed, EmbeddingKeyMissingError } from '@/lib/embeddings';
+import { enforceAiRateLimit } from '@/lib/ratelimit';
+import { consumeQuota } from '@/lib/quota';
 import {
   answerQuestion,
   answerQuestionStream,
@@ -11,6 +13,9 @@ import {
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+/** 问题文本硬上限（字符）。超出直接 413，防超大请求打爆 embedding/LLM。 */
+const MAX_QUESTION_CHARS = 2000;
 
 /**
  * POST /api/ask —— 知识库 RAG 问答（P6，仅当前登录用户）
@@ -82,6 +87,13 @@ export async function POST(request: Request) {
   if (!question) {
     return NextResponse.json({ error: '请输入问题' }, { status: 400 });
   }
+  // 输入硬上限：防超长问题打爆 embedding / LLM（embed 内部也会截到 8000，这里更早拒绝）。
+  if (question.length > MAX_QUESTION_CHARS) {
+    return NextResponse.json(
+      { error: `问题过长（上限 ${MAX_QUESTION_CHARS} 字）` },
+      { status: 413 }
+    );
+  }
 
   const history = parseHistory((body as { history?: unknown })?.history);
   const stream = wantsStream(request, (body as { stream?: unknown })?.stream);
@@ -92,6 +104,22 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: '未配置 DASHSCOPE_API_KEY，问答暂不可用' },
       { status: 503 }
+    );
+  }
+
+  // 成本/滥用闸：先突发限流（短窗口高频），再每日配额（当日总量）。两道都过才产生 AI 成本。
+  const rl = enforceAiRateLimit(user.id, 'ask');
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: '操作过于频繁，请稍后再试', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+  const quota = await consumeQuota(user.id, 'ask');
+  if (!quota.ok) {
+    return NextResponse.json(
+      { error: '今日额度已用尽', kind: 'ask', limit: quota.limit },
+      { status: 429 }
     );
   }
 

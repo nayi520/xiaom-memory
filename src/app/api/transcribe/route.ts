@@ -9,6 +9,8 @@ import {
   AsrKeyMissingError,
   AsrTimeoutError,
 } from '@/lib/asr/funasr';
+import { enforceAiRateLimit } from '@/lib/ratelimit';
+import { consumeQuota } from '@/lib/quota';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -58,6 +60,22 @@ export async function POST(request: Request) {
   // L-1 加固：纵深防御——只对本人 OSS 前缀的音频签名，杜绝越权转写他人音频对象。
   if (!note.media_path.startsWith(`audio/${user.id}/`)) {
     return NextResponse.json({ error: '记录不存在或非语音' }, { status: 404 });
+  }
+
+  // 成本/滥用闸：转写（Fun-ASR）按 userId 限流 + 每日配额。确认是本人语音记录后、产生 ASR 成本前拦。
+  const rl = enforceAiRateLimit(user.id, 'transcribe');
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: '操作过于频繁，请稍后再试', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+  const quota = await consumeQuota(user.id, 'transcribe');
+  if (!quota.ok) {
+    return NextResponse.json(
+      { error: '今日额度已用尽', kind: 'transcribe', limit: quota.limit },
+      { status: 429 }
+    );
   }
 
   // 取给 Fun-ASR 拉取音频用的公网签名 URL。OSS 未配置时优雅降级。

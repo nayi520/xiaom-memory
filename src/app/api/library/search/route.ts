@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { normalizeMode, runLibrarySearch } from '@/features/library/search';
+import { consumeQuota } from '@/lib/quota';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,7 +31,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ results: [] });
   }
   const domain = (params.get('domain') ?? '').trim() || null;
-  const mode = normalizeMode(params.get('mode'));
+  let mode = normalizeMode(params.get('mode'));
+
+  // 成本/滥用闸：仅当本次会真正发起语义 embedding 时（mode 含语义且已配 key）才计 embedding 配额。
+  // 关键词检索免费不计；超额时**降级为 keyword**（搜索仍可用），而非 429 阻断核心功能（UI 友好降级）。
+  const wouldEmbed = mode !== 'keyword' && Boolean(process.env.DASHSCOPE_API_KEY);
+  if (wouldEmbed) {
+    const quota = await consumeQuota(user.id, 'embedding');
+    if (!quota.ok) mode = 'keyword';
+  }
 
   const { hits } = await runLibrarySearch(getDb(), user.id, { q, domain, mode });
 

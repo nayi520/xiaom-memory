@@ -1,11 +1,22 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { uploadAudio, OssConfigMissingError } from '@/lib/storage/oss';
+import { enforceAiRateLimit } from '@/lib/ratelimit';
 
 // 上传走 ali-oss（Node SDK），需 Node runtime；音频可能较大 → 关闭 body 缓存、放宽时长。
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+/**
+ * 音频上传大小硬上限：默认 5MB，可由 env MAX_AUDIO_BYTES 覆盖。
+ * 录音 3 分钟内（opus/webm）远低于此；上限防超大上传打爆带宽/存储/后续转写。
+ */
+const MAX_AUDIO_BYTES = (() => {
+  const raw = process.env.MAX_AUDIO_BYTES;
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 5 * 1024 * 1024;
+})();
 
 /**
  * POST /api/audio —— 上传录音到 OSS（去 Supabase 改造 · Phase C）
@@ -25,6 +36,24 @@ export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
+  }
+
+  // 成本/滥用闸：上传按 userId 限流（突发防刷；大上传配额由后续转写的 transcribe 配额承担）。
+  const rl = enforceAiRateLimit(user.id, 'audio');
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: '操作过于频繁，请稍后再试', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+
+  // 输入硬上限（预检）：Content-Length 若已超限，早拒，避免白读超大 body。
+  const declaredLen = Number(request.headers.get('content-length') ?? '');
+  if (Number.isFinite(declaredLen) && declaredLen > MAX_AUDIO_BYTES) {
+    return NextResponse.json(
+      { error: `音频不能超过 ${Math.floor(MAX_AUDIO_BYTES / 1024 / 1024)}MB` },
+      { status: 413 }
+    );
   }
 
   // 读 body 成 Buffer + 推断 contentType（兼容 multipart 与原始二进制两种上传方式）。
@@ -52,6 +81,13 @@ export async function POST(request: Request) {
 
   if (buf.length === 0) {
     return NextResponse.json({ error: '音频内容为空' }, { status: 400 });
+  }
+  // 实际字节硬上限（Content-Length 可能缺失/不可信，以真实读到的为准）。
+  if (buf.length > MAX_AUDIO_BYTES) {
+    return NextResponse.json(
+      { error: `音频不能超过 ${Math.floor(MAX_AUDIO_BYTES / 1024 / 1024)}MB` },
+      { status: 413 }
+    );
   }
 
   try {

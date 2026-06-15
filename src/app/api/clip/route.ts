@@ -3,12 +3,18 @@ import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { notes } from '@/lib/db/schema';
 import { safeFetch } from '@/lib/link-meta';
+import { enforceAiRateLimit } from '@/lib/ratelimit';
+import { consumeQuota } from '@/lib/quota';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
 const MAX_CONTENT_CHARS = 20000;
 const FETCH_TIMEOUT_MS = 12000;
+/** URL 硬上限（字符）：防超长 URL；正常网页地址远低于此。 */
+const MAX_URL_CHARS = 2048;
+/** why_important 硬上限（字符）：用户备注，防超大文本入库。 */
+const MAX_WHY_CHARS = 2000;
 
 /**
  * POST /api/clip  { url, why_important? }
@@ -32,6 +38,29 @@ export async function POST(request: Request) {
   }
   if (!url || !/^https?:\/\//i.test(url)) {
     return NextResponse.json({ error: '无效的 URL' }, { status: 400 });
+  }
+  // 输入硬上限：URL / 备注过长直接拒绝，防超大请求。
+  if (url.length > MAX_URL_CHARS) {
+    return NextResponse.json({ error: 'URL 过长' }, { status: 413 });
+  }
+  if (typeof whyImportant === 'string' && whyImportant.length > MAX_WHY_CHARS) {
+    whyImportant = whyImportant.slice(0, MAX_WHY_CHARS);
+  }
+
+  // 成本/滥用闸：clip（抓 URL + 后续 LLM）按 userId 限流 + 每日配额。URL 合法后、抓取前拦。
+  const rl = enforceAiRateLimit(user.id, 'clip');
+  if (!rl.ok) {
+    return NextResponse.json(
+      { error: '操作过于频繁，请稍后再试', retryAfter: rl.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+    );
+  }
+  const quota = await consumeQuota(user.id, 'clip');
+  if (!quota.ok) {
+    return NextResponse.json(
+      { error: '今日额度已用尽', kind: 'clip', limit: quota.limit },
+      { status: 429 }
+    );
   }
 
   let rawContent: string | null = null;

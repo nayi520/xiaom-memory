@@ -18,6 +18,7 @@ import {
   integer,
   boolean,
   timestamp,
+  date,
   index,
   uniqueIndex,
   primaryKey,
@@ -388,6 +389,27 @@ export const pushSubscriptions = pgTable(
   })
 );
 
+// ============ usage_counters：per-user 每日 AI 用量计数（成本/滥用闸 0004） ============
+// 主键 (user_id, day, kind) 唯一标识「某用户某 UTC 日某类 AI 操作」的累计次数。
+//   - day：UTC 日历日（与 stats 口径一致，应用层用 new Date().toISOString().slice(0,10) 计算）。
+//   - kind：'ask' | 'transcribe' | 'clip' | 'embedding'（付费 AI 端点；上限由 env 配置）。
+//   - count：原子自增（insert ... on conflict do update set count=count+1 returning count），判超额。
+// 仅计量、不存敏感内容；用户删除时随 FK 级联清理。历史行天然留存，便于审计/统计。
+export const usageCounters = pgTable(
+  'usage_counters',
+  {
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    day: date('day').notNull(),
+    kind: text('kind').notNull(),
+    count: integer('count').notNull().default(0),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.day, t.kind] }),
+  })
+);
+
 // ============ 表类型导出（供后续 Drizzle 查询层用） ============
 export type UserRow = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -406,3 +428,4 @@ export type TagRow = typeof tags.$inferSelect;
 export type DigestRow = typeof digests.$inferSelect;
 export type CorrectionRow = typeof corrections.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+export type UsageCounterRow = typeof usageCounters.$inferSelect;
