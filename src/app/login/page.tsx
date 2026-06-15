@@ -180,7 +180,12 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center px-6 py-12">
+    <main className="relative flex min-h-dvh flex-col items-center justify-center overflow-hidden px-6 py-12">
+      {/* 品牌氛围光：纯装饰，跟随主题色与深浅色，移动端不喧宾夺主 */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-72 bg-gradient-to-b from-brand/10 to-transparent blur-2xl dark:from-brand/15"
+      />
       <div className="w-full max-w-sm animate-fade-in-up">
         <BrandMark />
 
@@ -271,19 +276,21 @@ function LoginForm() {
                 其他登录方式
               </summary>
               <div className="mt-5 space-y-3">
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
                   onClick={handleMagicLink}
                   disabled={isPending}
-                  className="flex w-full items-center justify-center gap-2 rounded-field border border-zinc-200 bg-white px-4 py-3 text-sm font-semibold text-zinc-700 shadow-sm transition duration-150 ease-smooth hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"
                 >
                   邮箱魔法链接登录
-                </button>
+                </Button>
                 <button
                   type="button"
                   onClick={handleApple}
                   disabled={isPending}
-                  className="flex w-full items-center justify-center gap-2 rounded-field bg-black px-4 py-3 text-sm font-semibold text-white shadow-card transition duration-150 ease-smooth hover:bg-zinc-800 active:scale-[0.98] disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
+                  className="flex w-full items-center justify-center gap-2 rounded-field bg-black px-4 py-3.5 text-base font-semibold text-white shadow-card transition duration-150 ease-smooth hover:bg-zinc-800 focus-visible:outline-none active:scale-[0.98] disabled:opacity-60 dark:bg-white dark:text-black dark:hover:bg-zinc-200"
                 >
                   <AppleLogo />
                   使用 Apple 登录

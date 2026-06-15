@@ -22,10 +22,10 @@ import {
   Markdown,
   Badge,
   EmptyState,
+  EmptyTimeline,
   ErrorState,
   SkeletonCard,
   NoteTypeIcon,
-  ClockIcon,
   ChevronRight,
   cn,
 } from '@/components/ui';
@@ -149,7 +149,7 @@ export default function TimelineFeed() {
   if (notes.length === 0) {
     return (
       <EmptyState
-        icon={<ClockIcon aria-hidden className="h-7 w-7" />}
+        art={<EmptyTimeline />}
         title="还没有记录"
         description="记下想法、剪藏链接或说一段话，它们会按时间出现在这里。"
         action={

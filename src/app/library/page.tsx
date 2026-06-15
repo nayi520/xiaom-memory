@@ -24,6 +24,7 @@ import ConceptGraphPanel from '@/features/library/components/ConceptGraphPanel';
 import {
   PageShell,
   EmptyState,
+  EmptyLibrary,
   LibraryIcon,
   SearchIcon,
   ClockIcon,
@@ -439,7 +440,7 @@ function AggregatedView({ groups }: { groups: DomainGroup[] }) {
   if (groups.length === 0) {
     return (
       <EmptyState
-        icon={<LibraryIcon aria-hidden className="h-7 w-7" />}
+        art={<EmptyLibrary />}
         title="知识库还是空的"
         description="先去记点东西，AI 整理后会自动归类到这里。"
       />

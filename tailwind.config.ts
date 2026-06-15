@@ -11,15 +11,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // 品牌色由 CSS 变量驱动（见 globals.css 的 --brand-xxx），便于「外观 · 主题色」整组切换。
+        // rgb(var(--x) / <alpha-value>) 让 bg-brand/10、ring-brand/40 等透明度档照常工作。
         brand: {
-          DEFAULT: '#4F46E5',
-          dark: '#4338CA',
-          light: '#EEF2FF',
-          50: '#EEF2FF',
-          100: '#E0E7FF',
-          500: '#6366F1',
-          600: '#4F46E5',
-          700: '#4338CA',
+          DEFAULT: 'rgb(var(--brand-600) / <alpha-value>)',
+          dark: 'rgb(var(--brand-700) / <alpha-value>)',
+          light: 'rgb(var(--brand-50) / <alpha-value>)',
+          50: 'rgb(var(--brand-50) / <alpha-value>)',
+          100: 'rgb(var(--brand-100) / <alpha-value>)',
+          500: 'rgb(var(--brand-500) / <alpha-value>)',
+          600: 'rgb(var(--brand-600) / <alpha-value>)',
+          700: 'rgb(var(--brand-700) / <alpha-value>)',
         },
       },
       borderRadius: {
@@ -33,7 +35,7 @@ const config: Config = {
         card: '0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06)',
         'card-hover': '0 4px 12px -2px rgb(0 0 0 / 0.08), 0 2px 6px -2px rgb(0 0 0 / 0.06)',
         pop: '0 8px 30px -6px rgb(0 0 0 / 0.12)',
-        focus: '0 0 0 3px rgb(79 70 229 / 0.18)',
+        focus: '0 0 0 3px rgb(var(--brand-600) / 0.18)',
       },
       maxWidth: {
         content: '40rem', // 640px，主内容阅读宽度（移动 + 桌面共用，单列阅读最舒适）

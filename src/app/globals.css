@@ -4,13 +4,72 @@
 
 :root {
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /*
+   * 品牌色板（RGB 通道值，供 tailwind `rgb(var(--brand-xxx) / <alpha-value>)` 消费）。
+   * 默认靛蓝 indigo（与历史 #4F46E5 系一致）；设置页「外观 · 主题色」只改这一组变量，
+   * 全站 bg-brand / text-brand / ring-brand / brand/NN 透明度档随之联动，无需逐处改色。
+   * data-accent 由 AppearanceProvider / 首屏内联脚本写在 <html> 上。
+   */
+  --brand-50: 238 242 255;
+  --brand-100: 224 231 255;
+  --brand-500: 99 102 241;
+  --brand-600: 79 70 229;
+  --brand-700: 67 56 202;
+  --brand: var(--brand-600);
+  --brand-dark: var(--brand-700);
+
+  /*
+   * 字号缩放：根 font-size = 16px × scale。所有 rem 间距/字号随之等比缩放，
+   * 不破坏布局比例。设置页「外观 · 字号」改 --app-font-scale；data-font 落在 <html>。
+   */
+  --app-font-scale: 1;
 }
 
 html {
   -webkit-tap-highlight-color: transparent;
   scroll-behavior: smooth;
+  /* 字号随外观设置等比缩放（默认 100%）。 */
+  font-size: calc(100% * var(--app-font-scale, 1));
   /* 安全区垫底，配合 standalone PWA */
   background-color: #fafafa;
+}
+
+/* —— 主题色预设（与 AppearanceProvider 的 ACCENTS / 首屏脚本保持一致） —— */
+html[data-accent='violet'] {
+  --brand-50: 245 243 255;
+  --brand-100: 237 233 254;
+  --brand-500: 139 92 246;
+  --brand-600: 124 58 237;
+  --brand-700: 109 40 217;
+}
+html[data-accent='blue'] {
+  --brand-50: 239 246 255;
+  --brand-100: 219 234 254;
+  --brand-500: 59 130 246;
+  --brand-600: 37 99 235;
+  --brand-700: 29 78 216;
+}
+html[data-accent='emerald'] {
+  --brand-50: 236 253 245;
+  --brand-100: 209 250 229;
+  --brand-500: 16 185 129;
+  --brand-600: 5 150 105;
+  --brand-700: 4 120 87;
+}
+html[data-accent='rose'] {
+  --brand-50: 255 241 242;
+  --brand-100: 255 228 230;
+  --brand-500: 244 63 94;
+  --brand-600: 225 29 72;
+  --brand-700: 190 18 60;
+}
+html[data-accent='amber'] {
+  --brand-50: 255 251 235;
+  --brand-100: 254 243 199;
+  --brand-500: 245 158 11;
+  --brand-600: 217 119 6;
+  --brand-700: 180 83 9;
 }
 
 /* 深色背景跟随手动开关（.dark 由 ThemeProvider / 首屏内联脚本落在 <html> 上） */
@@ -20,10 +79,10 @@ html.dark {
 
 body {
   @apply min-h-dvh bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
-  /* 极淡的径向高光，让大屏不再是一整片死板纯色（移动端几乎不可见，桌面端有质感） */
+  /* 极淡的径向高光，让大屏不再是一整片死板纯色（移动端几乎不可见，桌面端有质感）。跟随主题色。 */
   background-image: radial-gradient(
     1200px 600px at 50% -10%,
-    rgb(79 70 229 / 0.05),
+    rgb(var(--brand-600) / 0.05),
     transparent 70%
   );
   background-attachment: fixed;
@@ -34,7 +93,7 @@ body {
 .dark body {
   background-image: radial-gradient(
     1200px 600px at 50% -10%,
-    rgb(99 102 241 / 0.08),
+    rgb(var(--brand-500) / 0.08),
     transparent 70%
   );
 }
@@ -44,9 +103,9 @@ body {
   :focus-visible {
     @apply outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-zinc-50 dark:ring-offset-zinc-950;
   }
-  /* 表单控件主题色。color-scheme 由 ThemeProvider/首屏脚本写在 <html> 上（跟随手动开关），此处不再写死。 */
+  /* 表单控件主题色跟随品牌色变量。color-scheme 由 ThemeProvider/首屏脚本写在 <html> 上（跟随手动开关），此处不再写死。 */
   :root {
-    accent-color: #4f46e5;
+    accent-color: rgb(var(--brand-600));
   }
 }
 

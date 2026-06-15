@@ -11,9 +11,9 @@ import { useState } from 'react';
 import TrashItemActions from './TrashItemActions';
 import {
   EmptyState,
+  EmptyTrash,
   NoteTypeIcon,
   WhyIcon,
-  TrashIcon,
 } from '@/components/ui';
 
 export interface TrashedNote {
@@ -77,7 +77,7 @@ export default function TrashList({ initialItems }: { initialItems: TrashedNote[
   if (items.length === 0) {
     return (
       <EmptyState
-        icon={<TrashIcon aria-hidden className="h-7 w-7" />}
+        art={<EmptyTrash />}
         title="回收站是空的"
         description="删除的记录会出现在这里，随时可以恢复。"
       />

@@ -22,17 +22,28 @@ export { default as Avatar, type AvatarProps } from './Avatar';
 export { default as Markdown } from './Markdown';
 export { cn } from './cn';
 
+// 轻量内联插画（空状态视觉升级）
+export {
+  EmptyBox,
+  EmptyLibrary,
+  EmptyTimeline,
+  EmptyTrash,
+  EmptySearch,
+} from './illustrations';
+
 // 图标体系（lucide）：记录类型组件 + 具名语义/操作/状态图标
 export * from './icons';
 
 // Toast 反馈体系
 export { ToastProvider, useToast, type ToastOptions } from './Toast';
 
-// 深色模式（手动开关 + 跟随系统）
+// 外观偏好（深浅色三态 + 主题色 + 字号）
 export {
   ThemeProvider,
   useTheme,
   themeInitScript,
   type Theme,
+  type Accent,
+  type FontScale,
 } from './theme';
 export { default as ThemeToggle } from './ThemeToggle';

@@ -13,7 +13,7 @@ import {
 } from '../search';
 import {
   EmptyState,
-  SearchIcon,
+  EmptySearch,
   CloseIcon,
   WhyIcon,
   NoteIcon,
@@ -126,7 +126,7 @@ export default function SearchResults({
 
       {hits.length === 0 ? (
         <EmptyState
-          icon={<SearchIcon aria-hidden className="h-7 w-7" />}
+          art={<EmptySearch />}
           title="没找到相关内容"
           description={domain ? '该领域下没有匹配，试试切到「全部」领域或换个关键词。' : '换个关键词，或检查有没有错别字。'}
         />

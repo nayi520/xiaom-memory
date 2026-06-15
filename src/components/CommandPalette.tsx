@@ -65,6 +65,9 @@ export default function CommandPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  // 打开前的焦点元素，关闭后归还（无障碍：避免焦点丢回 <body>）。
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
 
   // —— 全局快捷键：⌘K / Ctrl+K 切换开关；另接受自定义事件（侧栏按钮等入口呼出）——
   useEffect(() => {
@@ -86,10 +89,13 @@ export default function CommandPalette() {
     };
   }, [bare]);
 
-  // 打开时聚焦输入框、重置状态
+  // 打开时聚焦输入框、重置状态；关闭时把焦点归还给打开前的元素（焦点管理）
   useEffect(() => {
     if (open) {
       setActive(0);
+      // 记录打开前的焦点元素，便于关闭后归还。
+      restoreFocusRef.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
       // 等待挂载后聚焦
       const t = setTimeout(() => inputRef.current?.focus(), 0);
       return () => clearTimeout(t);
@@ -97,6 +103,10 @@ export default function CommandPalette() {
     // 关闭时清空查询，下次打开干净
     setQuery('');
     setHits([]);
+    // 把焦点还给打开面板前的触发元素（若仍在文档内）。
+    const prev = restoreFocusRef.current;
+    if (prev && document.contains(prev)) prev.focus();
+    restoreFocusRef.current = null;
   }, [open]);
 
   // 路由切换自动关闭（点击结果跳转后面板收起）
@@ -162,11 +172,30 @@ export default function CommandPalette() {
     [router]
   );
 
-  // 列表内键盘导航
+  // 列表内键盘导航 + 焦点陷阱（Tab 在面板内循环，不逃逸到背后页面）
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Escape') {
       e.preventDefault();
       setOpen(false);
+      return;
+    }
+    if (e.key === 'Tab') {
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusables = root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const activeEl = document.activeElement;
+      if (e.shiftKey && activeEl === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && activeEl === last) {
+        e.preventDefault();
+        first.focus();
+      }
       return;
     }
     if (e.key === 'ArrowDown') {
@@ -217,6 +246,7 @@ export default function CommandPalette() {
           />
 
           <div
+            ref={dialogRef}
             className="glass relative w-full max-w-xl overflow-hidden rounded-card border border-zinc-200/80 shadow-pop motion-safe:animate-scale-in dark:border-zinc-700/80"
             onKeyDown={onKeyDown}
           >

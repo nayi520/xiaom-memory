@@ -126,10 +126,9 @@ function ToastViewport({
   onDismiss: (id: number) => void;
 }) {
   return (
-    <div
-      aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+5rem))] sm:items-end sm:px-6"
-    >
+    // 容器本身不做 live region：每条 ToastCard 自带 role=status + 按变体的 aria-live（polite/assertive），
+    // 避免「容器 + 卡片」双重 live 造成读屏重复播报。
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-[max(1.25rem,calc(env(safe-area-inset-bottom)+5rem))] sm:items-end sm:px-6">
       {items.map((t) => (
         <ToastCard key={t.id} item={t} onDismiss={onDismiss} />
       ))}
