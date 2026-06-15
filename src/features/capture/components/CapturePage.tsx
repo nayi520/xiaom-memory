@@ -7,7 +7,8 @@ import TextCapture from './TextCapture';
 import VoiceCapture from './VoiceCapture';
 import LinkCapture from './LinkCapture';
 import RecentNotes from './RecentNotes';
-import { PageShell, TextIcon, VoiceIcon, LinkIcon, useToast, cn } from '@/components/ui';
+import DashboardPanel from './DashboardPanel';
+import { PageShell, TextIcon, VoiceIcon, LinkIcon, AiIcon, useToast, cn } from '@/components/ui';
 import type { LucideIcon } from '@/components/ui';
 
 const TABS: { key: CaptureTab; label: string; Icon: LucideIcon }[] = [
@@ -19,7 +20,7 @@ const TABS: { key: CaptureTab; label: string; Icon: LucideIcon }[] = [
 export default function CapturePage() {
   const [tab, setTab] = useState<CaptureTab>('text');
   const [recent, setRecent] = useState<RecentItem[]>([]);
-  const { error: toastError } = useToast();
+  const { error: toastError, info: toastInfo } = useToast();
 
   // 加载最近 3 条
   useEffect(() => {
@@ -42,26 +43,36 @@ export default function CapturePage() {
     setRecent((prev) => [item, ...prev].slice(0, 3));
   }, []);
 
-  /** 服务端确认后用真实数据替换 */
-  const confirmNote = useCallback((tempId: string, note: Note, hint?: string) => {
-    setRecent((prev) =>
-      prev.map((n) =>
-        n.id === tempId ? ({ ...note, pending: false, hint } as RecentItem) : n
-      )
-    );
-  }, []);
+  /** 服务端确认后用真实数据替换，并弹「已记下，AI 正在整理」即时反馈。 */
+  const confirmNote = useCallback(
+    (tempId: string, note: Note, hint?: string) => {
+      setRecent((prev) =>
+        prev.map((n) =>
+          n.id === tempId ? ({ ...note, pending: false, hint } as RecentItem) : n
+        )
+      );
+      // 落库成功 → AI 异步整理，给用户即时确认（避免"提交后无声"）。
+      toastInfo('已记下，小M 正在整理…');
+    },
+    [toastInfo]
+  );
 
   /** 更新某条（如转写完成） */
   const updateNote = useCallback((id: string, patch: Partial<RecentItem>) => {
     setRecent((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
   }, []);
 
-  /** 提交失败标记：列表内保留红色「失败」徽标作持久态，同时弹 toast 即时告知。 */
+  /**
+   * 提交失败标记：列表内保留红色「失败」徽标作持久态，同时弹 toast 即时告知。
+   * retry 由录入组件传入（重发同一请求），挂到该条上供「重试」按钮调用。
+   */
   const failNote = useCallback(
-    (tempId: string, message?: string) => {
+    (tempId: string, message?: string, retry?: () => void) => {
       setRecent((prev) =>
         prev.map((n) =>
-          n.id === tempId ? { ...n, pending: false, failed: true, hint: message } : n
+          n.id === tempId
+            ? { ...n, pending: false, failed: true, hint: message, retry }
+            : n
         )
       );
       toastError(message || '保存失败，请重试');
@@ -93,7 +104,7 @@ export default function CapturePage() {
         </div>
       </header>
 
-      {/* 桌面双栏：左侧捕获区 / 右侧最近记录流；移动端单列堆叠（最近记录在下）。 */}
+      {/* 桌面双栏：左侧捕获区 / 右侧概览（待复习 + 知识概览 + 最近捕获）；移动端单列堆叠，捕获在最上。 */}
       <div className="flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-8">
         <div>
           {/* 记录类型分段切换（底部 tab 栏让位给全局导航） */}
@@ -127,14 +138,24 @@ export default function CapturePage() {
             {tab === 'link' && <LinkCapture {...handlers} />}
           </div>
 
-          {/* 移动端：最近记录在捕获区下方 */}
-          <div className="lg:hidden">
+          {/* 首次使用引导：一句话点明「记下后会发生什么」，降低上手门槛。 */}
+          <p className="mt-3 flex items-start gap-1.5 text-xs leading-relaxed text-zinc-400">
+            <AiIcon aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-brand/70" />
+            <span>
+              随手记下想法、剪藏链接或说一段话，小M 会自动整理成概念，并按记忆曲线提醒你复习。
+            </span>
+          </p>
+
+          {/* 移动端：概览（待复习 + 知识概览）+ 最近捕获，紧随捕获区之后。 */}
+          <div className="mt-8 space-y-8 lg:hidden">
+            <DashboardPanel />
             <RecentNotes items={recent} onTrash={removeNote} />
           </div>
         </div>
 
-        {/* 桌面端：最近记录作为右栏常驻 */}
-        <aside className="hidden lg:block">
+        {/* 桌面端：概览作为右栏常驻——待复习 / 知识概览 / 最近捕获。 */}
+        <aside className="hidden space-y-6 lg:block">
+          <DashboardPanel />
           <RecentNotes items={recent} onTrash={removeNote} keepWhenEmpty />
         </aside>
       </div>

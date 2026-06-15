@@ -73,8 +73,17 @@ export default function VoiceCapture({
   }
 
   async function saveRecording() {
+    // 把本次音频固化进闭包：重试时复用同一 blob（chunksRef 会被下次录音覆盖，故不能依赖它）。
     const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
     const whyText = why.trim() || null;
+    setWhy('');
+    setState('idle');
+    void uploadAndSave(blob, whyText);
+  }
+
+  /** 上传音频 → 建 note → 异步转写。失败任一步都挂「重试」回调（用同一 blob 重跑）。 */
+  async function uploadAndSave(blob: Blob, whyText: string | null) {
+    const retry = () => uploadAndSave(blob, whyText);
 
     // 乐观上屏
     const temp = makeTempNote({
@@ -84,8 +93,6 @@ export default function VoiceCapture({
       hint: '上传中…',
     });
     addOptimistic(temp);
-    setWhy('');
-    setState('idle');
 
     // 1. 上传音频到 OSS —— 改走 /api/audio（服务端取 userId 落 OSS，返回对象 key）。
     //    去 Supabase：不再浏览器端 supabase.storage.upload；key 即 media_path（含 audio/ 前缀）。
@@ -98,12 +105,12 @@ export default function VoiceCapture({
       });
       const upData = await upRes.json().catch(() => ({}));
       if (!upRes.ok || !upData.key) {
-        failNote(temp.id, upData.error || '音频上传失败');
+        failNote(temp.id, upData.error || '音频上传失败', retry);
         return;
       }
       mediaPath = upData.key as string;
     } catch {
-      failNote(temp.id, '音频上传失败');
+      failNote(temp.id, '音频上传失败', retry);
       return;
     }
 
@@ -121,12 +128,12 @@ export default function VoiceCapture({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.note) {
-        failNote(temp.id, data.error || '保存失败');
+        failNote(temp.id, data.error || '保存失败', retry);
         return;
       }
       note = data.note as Note;
     } catch {
-      failNote(temp.id, '网络错误，保存失败');
+      failNote(temp.id, '网络错误，保存失败', retry);
       return;
     }
     confirmNote(temp.id, note, '转写中…');

@@ -130,7 +130,9 @@ export default function ReviewSession({ items, totalDue, digestMd }: Props) {
             {items.length === 0 ? (
               <>
                 <p className="mt-3 text-lg font-semibold">今天没有到期的卡片</p>
-                <p className="mt-1 text-sm text-zinc-400">记点新东西，或者休息一下。</p>
+                <p className="mt-1 text-sm text-zinc-400">
+                  小M 会把你记录的内容整理成复习卡片，按记忆曲线在该复习时提醒你。先去记点东西吧。
+                </p>
               </>
             ) : skipped ? (
               <>

@@ -15,21 +15,10 @@ export default function TextCapture({
   const [showWhy, setShowWhy] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  async function handleSubmit(e?: React.FormEvent) {
-    e?.preventDefault();
-    const text = content.trim();
-    if (!text) return;
-
-    // 乐观 UI：立即上屏、立即清空，可连续记录
-    const temp = makeTempNote({
-      type: 'text',
-      raw_content: text,
-      why_important: why.trim() || null,
-    });
+  /** 发一次新建请求（首次提交与「重试」共用，重试会再上屏一条新乐观占位）。 */
+  async function submit(text: string, whyImportant: string | null) {
+    const temp = makeTempNote({ type: 'text', raw_content: text, why_important: whyImportant });
     addOptimistic(temp);
-    setContent('');
-    setWhy('');
-    textareaRef.current?.focus();
 
     try {
       const res = await fetch('/api/notes', {
@@ -38,18 +27,30 @@ export default function TextCapture({
         body: JSON.stringify({
           type: 'text',
           raw_content: text,
-          why_important: temp.why_important,
+          why_important: whyImportant,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.note) {
         confirmNote(temp.id, data.note as Note);
       } else {
-        failNote(temp.id, data.error || '保存失败，请重试');
+        failNote(temp.id, data.error || '保存失败，请重试', () => submit(text, whyImportant));
       }
     } catch {
-      failNote(temp.id, '网络错误，保存失败');
+      failNote(temp.id, '网络错误，保存失败', () => submit(text, whyImportant));
     }
+  }
+
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
+    const text = content.trim();
+    if (!text) return;
+
+    // 乐观 UI：立即清空，可连续记录
+    setContent('');
+    setWhy('');
+    textareaRef.current?.focus();
+    void submit(text, why.trim() || null);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {

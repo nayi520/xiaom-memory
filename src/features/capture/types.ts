@@ -5,6 +5,8 @@ export type RecentItem = Note & {
   pending?: boolean;
   failed?: boolean;
   hint?: string; // 如"转写中…"、"转写待配置"
+  /** 失败时由录入组件挂上的重试回调（点「重试」再发一次同一请求）。 */
+  retry?: () => void;
 };
 
 export type CaptureTab = 'text' | 'voice' | 'link';
@@ -14,7 +16,8 @@ export interface CaptureHandlers {
   addOptimistic: (item: RecentItem) => void;
   confirmNote: (tempId: string, note: Note, hint?: string) => void;
   updateNote: (id: string, patch: Partial<RecentItem>) => void;
-  failNote: (tempId: string, message?: string) => void;
+  /** 标记失败；可选 retry 回调挂到该条上，供「重试」按钮调用。 */
+  failNote: (tempId: string, message?: string, retry?: () => void) => void;
 }
 
 /** 构造乐观 UI 占位 note */

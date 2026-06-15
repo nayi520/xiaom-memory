@@ -10,6 +10,7 @@ import {
   WhyIcon,
   SuccessIcon,
   FailIcon,
+  RestoreIcon,
   cn,
 } from '@/components/ui';
 
@@ -100,6 +101,16 @@ export default function RecentNotes({
                       <FailIcon aria-hidden className="h-3 w-3" />
                       失败
                     </Badge>
+                  )}
+                  {item.failed && item.retry && (
+                    <button
+                      type="button"
+                      onClick={item.retry}
+                      className="inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-medium text-brand transition hover:bg-brand/10 focus-visible:outline-none dark:hover:bg-brand/15"
+                    >
+                      <RestoreIcon aria-hidden className="h-3 w-3" />
+                      重试
+                    </button>
                   )}
                 </div>
               </div>

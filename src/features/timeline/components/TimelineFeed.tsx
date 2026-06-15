@@ -143,7 +143,14 @@ export default function TimelineFeed() {
       <EmptyState
         icon={<ClockIcon aria-hidden className="h-7 w-7" />}
         title="还没有记录"
-        description="去记点东西，它们会按时间出现在这里。"
+        description="记下想法、剪藏链接或说一段话，它们会按时间出现在这里。"
+        action={
+          <Link href="/">
+            <Button variant="secondary" size="sm">
+              去记录
+            </Button>
+          </Link>
+        }
       />
     );
   }

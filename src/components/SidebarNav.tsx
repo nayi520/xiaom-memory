@@ -22,11 +22,13 @@ import {
   SunIcon,
   MoonIcon,
   SystemIcon,
+  SearchIcon,
   cn,
 } from '@/components/ui';
 import type { LucideIcon, Theme } from '@/components/ui';
 import { PRIMARY_NAV, SECONDARY_NAV, isNavActive, type NavItem } from './nav-items';
 import { useDueCount } from './useDueCount';
+import { openCommandPalette } from './CommandPalette';
 
 export default function SidebarNav() {
   const pathname = usePathname();
@@ -53,6 +55,21 @@ export default function SidebarNav() {
             <span className="text-[11px] text-zinc-400">你负责遇见，小M 替你记得</span>
           </span>
         </Link>
+      </div>
+
+      {/* 命令面板入口（⌘K）：快速跳转 + 搜索概念/记录 */}
+      <div className="px-3 pb-3">
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          className="group flex w-full items-center gap-2.5 rounded-field border border-zinc-200/80 bg-white/60 px-3 py-2 text-sm text-zinc-400 shadow-sm transition duration-150 ease-smooth hover:border-zinc-300 hover:text-zinc-600 focus-visible:outline-none dark:border-zinc-800 dark:bg-zinc-900/40 dark:hover:border-zinc-700 dark:hover:text-zinc-300"
+        >
+          <SearchIcon aria-hidden className="h-[18px] w-[18px] shrink-0" />
+          <span className="flex-1 text-left">搜索 / 跳转</span>
+          <kbd className="shrink-0 rounded border border-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 dark:border-zinc-700">
+            ⌘K
+          </kbd>
+        </button>
       </div>
 
       {/* 导航 */}

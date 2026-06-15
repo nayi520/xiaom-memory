@@ -3,6 +3,7 @@ import './globals.css';
 import SwRegister from './sw-register';
 import BottomNav from '@/components/BottomNav';
 import AppShell from '@/components/AppShell';
+import CommandPalette from '@/components/CommandPalette';
 import { ThemeProvider, ToastProvider, themeInitScript } from '@/components/ui';
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ export default function RootLayout({
           <ToastProvider>
             <AppShell>{children}</AppShell>
             <BottomNav />
+            <CommandPalette />
             <SwRegister />
           </ToastProvider>
         </ThemeProvider>
