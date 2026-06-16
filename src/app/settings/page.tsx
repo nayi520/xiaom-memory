@@ -7,6 +7,7 @@ import StatsPanel from '@/features/settings/components/StatsPanel';
 import ReviewHeatmap from '@/features/review/components/ReviewHeatmap';
 import ReviewDailyGoalPicker from '@/features/review/components/ReviewDailyGoalPicker';
 import ProfileCard from '@/features/settings/components/ProfileCard';
+import ChangePasswordCard from '@/features/settings/components/ChangePasswordCard';
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
 import {
   PageShell,
@@ -34,6 +35,12 @@ export default function SettingsPage() {
       <section className="mb-9 space-y-2.5">
         <SectionTitle className="mb-1">个人资料</SectionTitle>
         <ProfileCard />
+      </section>
+
+      {/* 账户安全：自助修改 / 设置登录密码（横跨整宽） */}
+      <section className="mb-9 space-y-2.5">
+        <SectionTitle className="mb-1">账户安全</SectionTitle>
+        <ChangePasswordCard />
       </section>
 
       {/* 数据统计：横跨整宽（四项计数在桌面铺成一行） */}
