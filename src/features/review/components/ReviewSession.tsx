@@ -15,10 +15,13 @@
  */
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RATING_LABELS, type ReviewRating } from '../fsrs';
-import type { ReviewQueueItem } from '../types';
+import { RATING_LABELS, type FsrsStateJson, type ReviewRating } from '../fsrs';
+import type { ReviewMode, ReviewQueueItem } from '../types';
+import { clozeFront, clozeFull, hasCloze } from '../cloze';
 import NoteSource from './NoteSource';
+import { useTts } from './useTts';
 import {
   Button,
   Textarea,
@@ -39,10 +42,23 @@ import {
   ReviewIcon,
   SaveIcon,
   CloseIcon,
+  SpeakIcon,
+  MuteIcon,
+  LeechIcon,
+  UndoIcon,
+  CramIcon,
+  ClockIcon,
   useToast,
   cn,
 } from '@/components/ui';
 import type { LucideIcon } from '@/components/ui';
+
+/** 复习模式的展示标签与图标（模式切换 UI 用）。 */
+const MODE_META: Record<ReviewMode, { label: string; Icon: LucideIcon }> = {
+  due: { label: '今日到期', Icon: ClockIcon },
+  all: { label: '全部', Icon: CramIcon },
+  leech: { label: '顽固卡', Icon: LeechIcon },
+};
 
 const RATING_STYLES: Record<ReviewRating, string> = {
   1: 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100 dark:bg-red-950 dark:text-red-400 dark:border-red-900 dark:hover:bg-red-900/60',
@@ -59,6 +75,21 @@ interface Props {
   reviewedToday: number;
   /** 每日复习目标（张）。 */
   dailyGoal: number;
+  /** 当前复习模式（V14）：due=今日到期 / all=全部 / leech=顽固卡。 */
+  mode: ReviewMode;
+  /** 当前领域过滤（V14），null = 不限。 */
+  domain: string | null;
+  /** 可选领域列表（V14），用于领域下拉。 */
+  domains: string[];
+}
+
+/** 构造 /review 链接，保留 mode（非 due 才带）与 domain 查询参数（V14）。 */
+function buildReviewHref(mode: ReviewMode, domain: string | null): string {
+  const params = new URLSearchParams();
+  if (mode !== 'due') params.set('mode', mode);
+  if (domain) params.set('domain', domain);
+  const qs = params.toString();
+  return qs ? `/review?${qs}` : '/review';
 }
 
 /** 把下次到期 ISO 格式化成「相对人话」：今天/明天/N 天后/具体日期。 */
@@ -82,8 +113,12 @@ export default function ReviewSession({
   digestMd,
   reviewedToday,
   dailyGoal,
+  mode,
+  domain,
+  domains,
 }: Props) {
   const { error: toastError, success } = useToast();
+  const tts = useTts();
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [showSource, setShowSource] = useState(false);
@@ -101,6 +136,15 @@ export default function ReviewSession({
   const [edits, setEdits] = useState<Record<string, { question: string; answer: string }>>({});
   // 本次会话暂停的卡片张数（仅用于完成页提示，暂停后线性流不再回到该卡）。
   const [suspendedCount, setSuspendedCount] = useState(0);
+  // 撤销上一次评分（V14，会话内）：记下刚评分卡的索引/卡 id/评分前快照/所评档位，
+  // 供「撤销」回退一张并还原服务端状态。null = 当前无可撤销。
+  const [lastRated, setLastRated] = useState<{
+    idx: number;
+    cardId: string;
+    prevFsrsState: FsrsStateJson | null;
+    rating: ReviewRating;
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
 
   // 编辑态（每次进入复制当前 Q/A 到草稿）。
   const [editing, setEditing] = useState(false);
@@ -116,6 +160,19 @@ export default function ReviewSession({
     const e = edits[baseCurrent.id];
     return e ? { ...baseCurrent, question: e.question, answer: e.answer } : baseCurrent;
   }, [baseCurrent, edits]);
+
+  // cloze 填空卡（V14，纯渲染）：question 含 {{...}} 时正面挖空、翻面显示完整。
+  const isCloze = useMemo(() => hasCloze(current?.question), [current]);
+  // 正面问题文本：填空卡挖空成 [...]，普通卡原样。
+  const questionFront = useMemo(
+    () => (current ? clozeFront(current.question) : ''),
+    [current]
+  );
+  // 完整问题文本（翻面展示 + 朗读用）：去掉花括号标记。
+  const questionFull = useMemo(
+    () => (current ? clozeFull(current.question) : ''),
+    [current]
+  );
 
   const reviewedCount = stats[1] + stats[2] + stats[3] + stats[4];
   // 今日目标进度 = 进入前已复习 + 本次会话已复习。
@@ -158,6 +215,14 @@ export default function ReviewSession({
         setCombo(0);
       }
 
+      // 记下「上一次评分」以支持会话内撤销（捕获评分前的 fsrs_state 快照与当前索引）。
+      setLastRated({
+        idx,
+        cardId: current.id,
+        prevFsrsState: baseCurrent?.fsrsState ?? null,
+        rating,
+      });
+
       // 异步落库（写 reviews + 更新 fsrs_state），不阻塞翻下一张。
       fetch('/api/review', {
         method: 'POST',
@@ -180,8 +245,47 @@ export default function ReviewSession({
 
       advance();
     },
-    [current, editing, advance, toastError]
+    [current, baseCurrent, idx, editing, advance, toastError]
   );
+
+  /**
+   * 撤销上一次评分（V14，会话内）：POST /api/review/undo 还原服务端 fsrs_state、删最近一条日志，
+   * 再回退本地——退回那张卡、扣减该档计数、重算连击、清掉 lastRated。失败弹 toast、不回退本地。
+   */
+  const undoLast = useCallback(async () => {
+    if (!lastRated || undoing) return;
+    setUndoing(true);
+    try {
+      const res = await fetch('/api/review/undo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          cardId: lastRated.cardId,
+          prevFsrsState: lastRated.prevFsrsState ?? {},
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `撤销失败（${res.status}）`);
+      }
+      // 本地回退：扣该档计数、退回到那张卡、重置翻面/溯源/连击。
+      const r = lastRated.rating;
+      setStats((s) => ({ ...s, [r]: Math.max(0, s[r] - 1) }));
+      // 连击难以精确逆推（依赖更早序列），保守清零——只影响展示，不影响调度。
+      setCombo(0);
+      setFinished(false);
+      setSkipped(false);
+      setFlipped(true);
+      setShowSource(false);
+      setIdx(lastRated.idx);
+      setLastRated(null);
+      success('已撤销上一次评分');
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : '撤销失败');
+    } finally {
+      setUndoing(false);
+    }
+  }, [lastRated, undoing, success, toastError]);
 
   /** 保存卡片编辑（PATCH /api/cards/{id}）。成功后就地覆盖展示。 */
   const saveEdit = useCallback(async () => {
@@ -261,12 +365,43 @@ export default function ReviewSession({
     return () => window.removeEventListener('keydown', onKey);
   }, [finished, editing, flipped, rate]);
 
+  // TTS 自动朗读（V14，开关开启时）：展示问题时念问题，翻面后念答案。
+  // 依赖 idx/flipped 触发；tts.speak 内部尊重开关与中文 voice，关闭时为 no-op。
+  useEffect(() => {
+    if (finished || editing || !current || !tts.enabled) return;
+    if (flipped) {
+      tts.speak(current.answer);
+    } else {
+      tts.speak(questionFull);
+    }
+    // 仅在卡片切换 / 翻面 / 开关变化时朗读。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idx, flipped, finished, editing, tts.enabled]);
+
   // ============ 完成页 ============
   if (finished) {
     const accuracy =
       reviewedCount > 0 ? Math.round(((stats[3] + stats[4]) / reviewedCount) * 100) : 0;
     const dueLabel = formatNextDue(nextDueAt);
     const remaining = totalDue - items.length;
+    // 空态文案随模式 / 领域而异（V14）。
+    const domainSuffix = domain ? `「${domain}」领域下` : '';
+    const emptyTitle =
+      mode === 'leech'
+        ? `${domainSuffix}没有顽固卡 🎉`
+        : mode === 'all'
+          ? `${domainSuffix}还没有复习卡片`
+          : domain
+            ? `「${domain}」领域今天没有到期卡片`
+            : '今天没有到期的卡片';
+    const emptyHint =
+      mode === 'leech'
+        ? '顽固卡指反复忘记（lapses 达阈值）的卡片。暂时没有，说明记得都还不错。'
+        : mode === 'all'
+          ? '小M 会把你记录的内容整理成复习卡片。先去记点东西，或切回「今日到期」。'
+          : domain
+            ? '换个模式（全部 / 顽固卡）或清除领域筛选，也可以提前练。'
+            : '小M 会把你记录的内容整理成复习卡片，按记忆曲线在该复习时提醒你。先去记点东西吧。';
     const { Icon: HeroIcon, color: heroColor } = ((): {
       Icon: LucideIcon;
       color: string;
@@ -279,6 +414,16 @@ export default function ReviewSession({
     return (
       <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
         <Header />
+        {/* 模式 / 领域切换（V14）：完成 / 空态也能切换模式开练 */}
+        <ModeSwitcher
+          mode={mode}
+          domain={domain}
+          domains={domains}
+          ttsSupported={tts.supported}
+          ttsEnabled={tts.enabled}
+          onToggleTts={() => tts.setEnabled(!tts.enabled)}
+          className="mb-4"
+        />
         <div className="flex flex-1 flex-col gap-4">
           <section className="animate-fade-in-up rounded-card border border-zinc-200/80 bg-white p-7 text-center shadow-card dark:border-zinc-800 dark:bg-zinc-900">
             <div className="mx-auto mb-1 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-zinc-100 to-zinc-50 shadow-card ring-1 ring-zinc-200/60 dark:from-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60">
@@ -286,10 +431,8 @@ export default function ReviewSession({
             </div>
             {items.length === 0 ? (
               <>
-                <p className="mt-3 text-lg font-semibold">今天没有到期的卡片</p>
-                <p className="mt-1 text-sm text-zinc-400">
-                  小M 会把你记录的内容整理成复习卡片，按记忆曲线在该复习时提醒你。先去记点东西吧。
-                </p>
+                <p className="mt-3 text-lg font-semibold">{emptyTitle}</p>
+                <p className="mt-1 text-sm text-zinc-400">{emptyHint}</p>
               </>
             ) : skipped ? (
               <>
@@ -386,7 +529,7 @@ export default function ReviewSession({
           <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
             {!skipped && remaining > 0 ? (
               <Link
-                href="/review"
+                href={buildReviewHref(mode, domain)}
                 prefetch={false}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-field bg-brand py-3 text-center font-semibold text-white shadow-card transition duration-150 ease-smooth hover:bg-brand-dark hover:shadow-card-hover active:scale-[0.99]"
               >
@@ -418,6 +561,17 @@ export default function ReviewSession({
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
       <Header progress={`${idx + 1} / ${items.length}`} combo={combo} />
+
+      {/* 模式 / 领域切换 + 朗读开关（V14） */}
+      <ModeSwitcher
+        mode={mode}
+        domain={domain}
+        domains={domains}
+        ttsSupported={tts.supported}
+        ttsEnabled={tts.enabled}
+        onToggleTts={() => tts.setEnabled(!tts.enabled)}
+        className="mb-3"
+      />
 
       {/* 进度条 */}
       <div
@@ -504,17 +658,49 @@ export default function ReviewSession({
           ) : (
             /* —— 展示态：问题 / 翻面后答案 + 溯源 + 卡片操作 —— */
             <>
-              {current.conceptName && (
-                <p className="mb-2.5 text-xs font-medium uppercase tracking-wide text-brand/70">
-                  {current.conceptName}
-                </p>
-              )}
+              {/* 概念名 + leech 徽标 + 朗读按钮 */}
+              <div className="mb-2.5 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  {current.conceptName && (
+                    <p className="truncate text-xs font-medium uppercase tracking-wide text-brand/70">
+                      {current.conceptName}
+                    </p>
+                  )}
+                  {current.leech && <LeechBadge />}
+                </div>
+                {tts.supported && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // 朗读按钮：未开启则先开启再念当前面；已开启则直接念当前面。
+                      if (!tts.enabled) tts.setEnabled(true);
+                      tts.speak(flipped ? current.answer : questionFull);
+                    }}
+                    aria-label="朗读"
+                    title={tts.enabled ? '朗读这一面' : '开启朗读并朗读这一面'}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium text-zinc-400 transition hover:text-brand focus-visible:outline-none"
+                  >
+                    {tts.enabled ? (
+                      <SpeakIcon aria-hidden className="h-4 w-4" />
+                    ) : (
+                      <MuteIcon aria-hidden className="h-4 w-4" />
+                    )}
+                  </button>
+                )}
+              </div>
               <p className="text-lg font-semibold leading-relaxed text-zinc-900 dark:text-zinc-50">
-                {current.question}
+                {/* cloze 填空卡：正面挖空 [...]，翻面显示完整问题；普通卡两面一致。 */}
+                {flipped ? questionFull : questionFront}
               </p>
 
               {flipped ? (
                 <div className="animate-flip-in mt-5 border-t border-dashed border-zinc-200 pt-5 dark:border-zinc-700">
+                  {isCloze && (
+                    <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-brand/60">
+                      答案
+                    </p>
+                  )}
                   <p className="whitespace-pre-wrap leading-relaxed text-zinc-700 dark:text-zinc-200">
                     {current.answer}
                   </p>
@@ -618,6 +804,18 @@ export default function ReviewSession({
           </div>
         )}
 
+        {/* 撤销上一次评分（仅评过分后出现；会话内） */}
+        {!editing && lastRated && (
+          <button
+            onClick={undoLast}
+            disabled={undoing}
+            className="mt-5 inline-flex items-center justify-center gap-1 self-center rounded-md text-xs font-medium text-zinc-400 underline-offset-2 transition hover:text-brand hover:underline focus-visible:outline-none disabled:opacity-50"
+          >
+            <UndoIcon aria-hidden className="h-3.5 w-3.5" />
+            撤销上一次评分（{RATING_LABELS[lastRated.rating]}）
+          </button>
+        )}
+
         <button
           onClick={() => {
             setSkipped(true);
@@ -629,6 +827,118 @@ export default function ReviewSession({
         </button>
       </div>
     </main>
+  );
+}
+
+/** leech（顽固卡）徽标。 */
+function LeechBadge() {
+  return (
+    <span
+      title="顽固卡：反复忘记（lapses 达阈值）"
+      className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-600 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-400"
+    >
+      <LeechIcon aria-hidden className="h-3 w-3" />
+      顽固卡
+    </span>
+  );
+}
+
+/**
+ * 复习模式 / 领域切换 + 朗读开关（V14）。
+ * - 模式：due/all/leech 三个分段，点击导航到 /review?mode=...（保留 domain）。
+ * - 领域：原生 select，切换时导航（保留 mode）；无领域选项时不显示。
+ * - 朗读：浏览器支持时显示开关；点按切换 TTS enabled（持久化在 useTts 内）。
+ */
+function ModeSwitcher({
+  mode,
+  domain,
+  domains,
+  ttsSupported,
+  ttsEnabled,
+  onToggleTts,
+  className,
+}: {
+  mode: ReviewMode;
+  domain: string | null;
+  domains: string[];
+  ttsSupported: boolean;
+  ttsEnabled: boolean;
+  onToggleTts: () => void;
+  className?: string;
+}) {
+  const router = useRouter();
+  const modes: ReviewMode[] = ['due', 'all', 'leech'];
+
+  return (
+    <div className={cn('flex flex-wrap items-center gap-2', className)}>
+      {/* 模式分段 */}
+      <div className="inline-flex rounded-pill border border-zinc-200 bg-white p-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-900">
+        {modes.map((m) => {
+          const { label, Icon } = MODE_META[m];
+          const active = m === mode;
+          return (
+            <Link
+              key={m}
+              href={buildReviewHref(m, domain)}
+              prefetch={false}
+              aria-current={active ? 'page' : undefined}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-pill px-2.5 py-1 font-medium transition',
+                active
+                  ? 'bg-brand text-white shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200'
+              )}
+            >
+              <Icon aria-hidden className="h-3.5 w-3.5" />
+              {label}
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* 领域筛选（有选项才显示） */}
+      {domains.length > 0 && (
+        <select
+          value={domain ?? ''}
+          onChange={(e) => {
+            const next = e.target.value || null;
+            router.push(buildReviewHref(mode, next));
+          }}
+          aria-label="按领域筛选"
+          className="rounded-pill border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-600 transition hover:border-zinc-300 focus-visible:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300"
+        >
+          <option value="">全部领域</option>
+          {domains.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {/* 朗读开关（浏览器支持才显示） */}
+      {ttsSupported && (
+        <button
+          type="button"
+          onClick={onToggleTts}
+          aria-pressed={ttsEnabled}
+          title={ttsEnabled ? '朗读已开启（点击关闭）' : '朗读已关闭（点击开启）'}
+          className={cn(
+            'ml-auto inline-flex items-center gap-1 rounded-pill border px-2.5 py-1 text-xs font-medium transition',
+            ttsEnabled
+              ? 'border-brand/30 bg-brand/10 text-brand'
+              : 'border-zinc-200 bg-white text-zinc-500 hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+          )}
+        >
+          {ttsEnabled ? (
+            <SpeakIcon aria-hidden className="h-3.5 w-3.5" />
+          ) : (
+            <MuteIcon aria-hidden className="h-3.5 w-3.5" />
+          )}
+          朗读
+        </button>
+      )}
+    </div>
   );
 }
 

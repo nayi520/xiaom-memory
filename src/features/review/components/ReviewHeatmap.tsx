@@ -1,21 +1,28 @@
 'use client';
 
 /**
- * 复习热力图面板（V7）—— 年度贡献图 + 保留率 + 今日已复习。
+ * 复习热力图面板（V7 + V14 复习洞察）—— 年度贡献图 + 保留率 + 今日已复习 + 最易忘。
  *
  * 数据：挂载时 GET /api/review/stats（已鉴权 + userId 过滤）。
  *   - daily：近 365 天每天复习张数（已补全零值、升序），渲染成 GitHub 风格的周×日方格，
  *     按张数分 5 档深浅；hover/focus 有 title 提示「日期 · N 张」。
  *   - retentionRate / todayCount / totalReviews：上方三项指标卡。
+ *   - mostForgotten（V14）：lapses 最高的概念 top N，列成「最易忘」清单（含概念名 + 忘记次数）。
  * 加载中骨架；失败友好降级（整块隐藏，不打扰）。深浅色与既有设计系统一致。
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { GoalIcon, TrendIcon, ReviewIcon, cn } from '@/components/ui';
+import { GoalIcon, TrendIcon, ReviewIcon, WarningIcon, cn } from '@/components/ui';
 
 interface DailyCell {
   date: string;
   count: number;
+}
+
+interface ForgottenItem {
+  conceptId?: string;
+  name: string;
+  lapses: number;
 }
 
 interface ReviewStats {
@@ -23,6 +30,7 @@ interface ReviewStats {
   retentionRate: number;
   todayCount: number;
   totalReviews: number;
+  mostForgotten?: ForgottenItem[];
 }
 
 /** 张数 → 深浅档（0..4）。0 = 无复习的浅底；越多越深（品牌色阶）。 */
@@ -164,6 +172,34 @@ export default function ReviewHeatmap({ className }: { className?: string }) {
           </div>
         )}
       </div>
+
+      {/* 最易忘（V14）：lapses 最高的概念 top N */}
+      {!loading && (stats.mostForgotten?.length ?? 0) > 0 && (
+        <div className="rounded-card border border-zinc-200/80 bg-white p-4 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="mb-3 flex items-center gap-1.5">
+            <WarningIcon aria-hidden className="h-3.5 w-3.5 text-amber-500" />
+            <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">最易忘</p>
+          </div>
+          <ul className="space-y-1.5">
+            {stats.mostForgotten!.map((item, i) => (
+              <li
+                key={item.conceptId ?? `${item.name}-${i}`}
+                className="flex items-center justify-between gap-3 text-sm"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="w-4 shrink-0 text-right text-[11px] tabular-nums text-zinc-300 dark:text-zinc-600">
+                    {i + 1}
+                  </span>
+                  <span className="truncate text-zinc-700 dark:text-zinc-200">{item.name}</span>
+                </span>
+                <span className="shrink-0 rounded-pill bg-amber-50 px-2 py-0.5 text-[11px] font-medium tabular-nums text-amber-600 dark:bg-amber-950 dark:text-amber-400">
+                  忘 {item.lapses} 次
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

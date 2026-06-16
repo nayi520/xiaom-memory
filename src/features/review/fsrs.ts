@@ -28,6 +28,8 @@ export const SECONDS_PER_CARD = 30;
 export const GRADUATE_MIN_INTERVAL_DAYS = 180;
 /** 毕业条件：最近连续 N 次评分 = 4（轻松） */
 export const GRADUATE_EASY_STREAK = 3;
+/** leech（顽固卡）默认阈值：lapses ≥ 此值即视为 leech（V14，可由 env LEECH_LAPSES 覆盖）。 */
+export const DEFAULT_LEECH_LAPSES = 8;
 
 /** 四档自评：1忘了 / 2模糊 / 3记得 / 4轻松（对应 FSRS Rating 1–4） */
 export type ReviewRating = 1 | 2 | 3 | 4;
@@ -189,4 +191,30 @@ export function shouldGraduate(
 export function estimateMinutes(dueCount: number): number {
   const cards = Math.min(dueCount, DAILY_REVIEW_LIMIT);
   return Math.max(1, Math.round((cards * SECONDS_PER_CARD) / 60));
+}
+
+// ============ leech 标记（V14） ============
+
+/**
+ * 当前 leech 阈值：env LEECH_LAPSES 为合法非负整数则用之，否则缺省 8。
+ * 仅在服务端读取（env 不暴露给客户端）；纯函数，便于测试。
+ */
+export function leechThreshold(): number {
+  const raw = process.env.LEECH_LAPSES;
+  if (raw === undefined || raw.trim() === '') return DEFAULT_LEECH_LAPSES;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) return DEFAULT_LEECH_LAPSES;
+  return n;
+}
+
+/**
+ * 是否为 leech（顽固卡）：fsrs_state.lapses ≥ 阈值。
+ * @param threshold 阈值（默认取 leechThreshold()）。lapses 缺省视为 0。
+ */
+export function isLeech(
+  json: FsrsStateJson | null | undefined,
+  threshold: number = leechThreshold()
+): boolean {
+  const lapses = json?.lapses ?? 0;
+  return typeof lapses === 'number' && lapses >= threshold;
 }

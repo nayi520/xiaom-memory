@@ -55,6 +55,11 @@ import {
   Save,
   CalendarClock,
   Home,
+  Volume2,
+  VolumeX,
+  Bug,
+  Undo2,
+  Layers,
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
@@ -109,6 +114,11 @@ export {
   Save as SaveIcon,
   CalendarClock as DueIcon,
   Home as HomeIcon,
+  Volume2 as SpeakIcon,
+  VolumeX as MuteIcon,
+  Bug as LeechIcon,
+  Undo2 as UndoIcon,
+  Layers as CramIcon,
 };
 
 /** 记录类型 → 图标组件（一处定义，替代各页重复的 TYPE_ICON emoji 表）。 */
