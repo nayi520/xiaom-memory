@@ -21,15 +21,19 @@ import {
   SearchIcon,
   LibraryIcon,
   NoteIcon,
+  AskIcon,
   EnterIcon,
   ArrowUpIcon,
   ArrowDownIcon,
   cn,
   type LucideIcon,
 } from '@/components/ui';
-import { PRIMARY_NAV, SECONDARY_NAV } from './nav-items';
+import { PRIMARY_NAV, SECONDARY_NAV, type NavItem } from './nav-items';
 
-const NAV = [...PRIMARY_NAV, ...SECONDARY_NAV];
+// 命令面板额外入口：使用帮助（/guide）——不进常驻侧栏/底栏，但可由 ⌘K 快速到达。
+const EXTRA_NAV: NavItem[] = [{ href: '/guide', label: '使用帮助', Icon: AskIcon }];
+
+const NAV = [...PRIMARY_NAV, ...SECONDARY_NAV, ...EXTRA_NAV];
 
 /** 自定义事件名：任意入口（如侧栏「搜索」按钮）dispatch 它即可呼出面板。 */
 export const COMMAND_PALETTE_OPEN_EVENT = 'xiaom:open-command-palette';

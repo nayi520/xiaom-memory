@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import type { Note } from '@/lib/types';
 import type { CaptureTab, RecentItem } from '../types';
 import TextCapture from './TextCapture';
@@ -174,11 +175,19 @@ export default function CapturePage() {
             {tab === 'link' && <LinkCapture {...handlers} />}
           </div>
 
-          {/* 首次使用引导：一句话点明「记下后会发生什么」，降低上手门槛。 */}
+          {/* 首次使用引导：一句话点明「记下后会发生什么」，降低上手门槛；附「使用帮助」入口。 */}
           <p className="mt-3 flex items-start gap-1.5 text-xs leading-relaxed text-zinc-400">
             <AiIcon aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-brand/70" />
             <span>
               随手记下想法、剪藏链接或说一段话，小M 会自动整理成概念，并按记忆曲线提醒你复习。
+              新手可看{' '}
+              <Link
+                href="/guide"
+                className="font-medium text-brand underline-offset-2 transition hover:underline focus-visible:outline-none"
+              >
+                使用帮助
+              </Link>
+              。
             </span>
           </p>
 

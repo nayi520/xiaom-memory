@@ -116,6 +116,8 @@ function NavLink({ item, active, due }: { item: NavItem; active: boolean; due: n
     <Link
       href={item.href}
       aria-current={active ? 'page' : undefined}
+      // data-tour：供 V12 产品导览（ProductTour）按入口定位高亮，仅作锚点、不影响交互。
+      data-tour={`nav-${item.href === '/' ? 'home' : item.href.replace(/^\//, '')}`}
       className={cn(
         'group relative flex items-center gap-3 rounded-field px-3 py-2.5 text-sm font-medium transition duration-150 ease-smooth focus-visible:outline-none',
         active

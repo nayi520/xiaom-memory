@@ -9,13 +9,16 @@ export const dynamic = 'force-dynamic';
 /**
  * 用户设置（profiles.settings jsonb）—— 去 Supabase 改造
  *
- * GET   → { settings: { reminderHour, reviewDailyGoal } }（无 profile / 未设置时回各自缺省）
- * PATCH → 写 settings.reminderHour（0–23 整点，北京时间）和/或 settings.reviewDailyGoal（每日复习目标，1–100）。
- *         两键各自可选，可单独或同时提交；至少要带一项，否则 400。
+ * GET   → { settings: { reminderHour, reviewDailyGoal, onboarded } }（无 profile / 未设置时回各自缺省）
+ * PATCH → 写 settings.reminderHour（0–23 整点，北京时间）、settings.reviewDailyGoal（每日复习目标，1–100）
+ *         和/或 settings.onboarded（是否已看过新手引导，布尔，默认 false）。
+ *         各键各自可选，可单独或同时提交；至少要带一项，否则 400。
  *
  * 鉴权 getCurrentUser() 短路；授权应用层——按 user.id 读/写 profiles（原靠 RLS）。
  * 写入用 upsert + jsonb 合并（`settings || jsonb_build_object(...)`），
  * 既保证 profile 缺失时也能落库，又不覆盖 settings 内其它键（含彼此）。
+ *
+ * iOS 契约：onboarded 为新增的跨端键——首次完成新手引导后置 true，仅用于「是否首展引导」。
  */
 
 /** 复习提醒缺省小时（北京时间 8 点），与 cron/remind 的 DEFAULT_REMINDER_HOUR 一致。 */
@@ -49,6 +52,15 @@ function resolveReviewDailyGoal(settings: unknown): number {
   return Math.min(MAX_REVIEW_DAILY_GOAL, Math.max(MIN_REVIEW_DAILY_GOAL, n));
 }
 
+/** 从 settings 收敛出 onboarded（缺省/非布尔回退 false）。仅 true 才视为已引导过。 */
+function resolveOnboarded(settings: unknown): boolean {
+  const raw =
+    settings && typeof settings === 'object'
+      ? (settings as Record<string, unknown>).onboarded
+      : undefined;
+  return raw === true;
+}
+
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) {
@@ -66,6 +78,7 @@ export async function GET() {
       settings: {
         reminderHour: resolveReminderHour(settings),
         reviewDailyGoal: resolveReviewDailyGoal(settings),
+        onboarded: resolveOnboarded(settings),
       },
     });
   } catch (err) {
@@ -80,7 +93,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
 
-  let body: { reminderHour?: unknown; reviewDailyGoal?: unknown };
+  let body: { reminderHour?: unknown; reviewDailyGoal?: unknown; onboarded?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -89,7 +102,7 @@ export async function PATCH(request: Request) {
 
   // 校验提交的键（各自可选）；累积成一个 jsonb 合并对象，整体 upsert，不覆盖 settings 其它键。
   const patchEntries: ReturnType<typeof sql>[] = [];
-  const echo: { reminderHour?: number; reviewDailyGoal?: number } = {};
+  const echo: { reminderHour?: number; reviewDailyGoal?: number; onboarded?: boolean } = {};
 
   if (body.reminderHour !== undefined) {
     const raw = body.reminderHour;
@@ -125,9 +138,30 @@ export async function PATCH(request: Request) {
     echo.reviewDailyGoal = goal;
   }
 
+  if (body.onboarded !== undefined) {
+    const raw = body.onboarded;
+    // 仅接受布尔（含字符串 'true'/'false'，便于跨端宽松提交）。
+    const flag =
+      typeof raw === 'boolean'
+        ? raw
+        : raw === 'true'
+          ? true
+          : raw === 'false'
+            ? false
+            : null;
+    if (flag === null) {
+      return NextResponse.json(
+        { error: 'onboarded 必须是布尔值' },
+        { status: 400 }
+      );
+    }
+    patchEntries.push(sql`jsonb_build_object('onboarded', ${flag}::boolean)`);
+    echo.onboarded = flag;
+  }
+
   if (patchEntries.length === 0) {
     return NextResponse.json(
-      { error: '参数错误：需要 reminderHour 或 reviewDailyGoal 中的至少一项' },
+      { error: '参数错误：需要 reminderHour、reviewDailyGoal 或 onboarded 中的至少一项' },
       { status: 400 }
     );
   }

@@ -9,6 +9,7 @@ import ReviewDailyGoalPicker from '@/features/review/components/ReviewDailyGoalP
 import ProfileCard from '@/features/settings/components/ProfileCard';
 import ChangePasswordCard from '@/features/settings/components/ChangePasswordCard';
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
+import { OnboardingSettings } from '@/features/onboarding';
 import {
   PageShell,
   SectionTitle,
@@ -114,6 +115,11 @@ export default function SettingsPage() {
           <p className="text-sm leading-relaxed text-zinc-400">
             删除的记录会先移到回收站，可恢复或永久删除。
           </p>
+        </section>
+
+        <section className="space-y-2.5">
+          <SectionTitle className="mb-1">使用帮助</SectionTitle>
+          <OnboardingSettings />
         </section>
       </div>
 

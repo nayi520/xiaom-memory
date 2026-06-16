@@ -7,6 +7,7 @@ import CommandPalette from '@/components/CommandPalette';
 import { OfflineProvider } from '@/features/offline/OfflineProvider';
 import OfflineIndicator from '@/features/offline/OfflineIndicator';
 import InstallPrompt from '@/features/pwa/InstallPrompt';
+import { OnboardingProvider } from '@/features/onboarding';
 import { ThemeProvider, ToastProvider, themeInitScript } from '@/components/ui';
 
 export const metadata: Metadata = {
@@ -46,6 +47,7 @@ export default function RootLayout({
               <CommandPalette />
               <OfflineIndicator />
               <InstallPrompt />
+              <OnboardingProvider />
               <SwRegister />
             </OfflineProvider>
           </ToastProvider>

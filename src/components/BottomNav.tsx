@@ -41,6 +41,8 @@ export default function BottomNav() {
               key={href}
               href={href}
               aria-current={active ? 'page' : undefined}
+              // data-tour：供 V12 产品导览定位高亮（移动端底栏入口），仅作锚点。
+              data-tour={`nav-${href === '/' ? 'home' : href.replace(/^\//, '')}`}
               className={cn(
                 'group relative flex flex-1 flex-col items-center gap-1 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] text-[11px] font-medium transition-colors duration-150',
                 active

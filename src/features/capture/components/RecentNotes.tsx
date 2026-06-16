@@ -47,9 +47,14 @@ export default function RecentNotes({
     <section className={cn('mt-10 lg:mt-0', className)}>
       <SectionTitle>最近记录</SectionTitle>
       {items.length === 0 ? (
-        <p className="rounded-card border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-400 dark:border-zinc-800">
-          还没有记录，左侧记下第一条吧。
-        </p>
+        <div className="rounded-card border border-dashed border-zinc-200 px-4 py-8 text-center dark:border-zinc-800">
+          <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
+            还没有任何记录
+          </p>
+          <p className="mx-auto mt-1 max-w-[15rem] text-xs leading-relaxed text-zinc-400">
+            在上方记下第一条——一句想法、一段语音或一个链接都行。记完它会出现在这里，当晚小M 自动整理成概念。
+          </p>
+        </div>
       ) : (
       <ul className="space-y-2.5">
         {items.map((item) => (
