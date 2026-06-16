@@ -21,6 +21,7 @@ import {
   cardFromState,
   estimateMinutes,
   forgettingRisk,
+  isLeech,
   shouldGraduate,
   sortQueue,
   stateToJson,
@@ -29,6 +30,7 @@ import {
   type FsrsStateJson,
   type ReviewRating,
 } from '../src/features/review/fsrs';
+import { clozeFront, clozeFull, hasCloze } from '../src/features/review/cloze';
 import { initialFsrsState } from '../src/features/digest/pipeline';
 import { State, default_maximum_interval } from 'ts-fsrs';
 
@@ -281,6 +283,45 @@ console.log('\n— 推送估时 estimateMinutes —');
   assert(estimateMinutes(8) === 4, '8 张 × 30 秒 → 4 分钟');
   assert(estimateMinutes(20) === 10, '20 张 → 10 分钟');
   assert(estimateMinutes(50) === 10, '超过每日上限按 20 张估（50 张 → 10 分钟）');
+}
+
+// ============ 7. leech 标记（V14） ============
+
+console.log('\n— leech 标记 isLeech —');
+{
+  const at = (lapses: number | undefined): FsrsStateJson => ({
+    ...newCardState(),
+    lapses,
+  });
+  assert(isLeech(at(8), 8), 'lapses=8、阈值 8 → 是 leech（≥）');
+  assert(isLeech(at(12), 8), 'lapses=12、阈值 8 → 是 leech');
+  assert(!isLeech(at(7), 8), 'lapses=7、阈值 8 → 不是 leech');
+  assert(!isLeech(at(0), 8), 'lapses=0 → 不是 leech');
+  assert(!isLeech(at(undefined), 8), 'lapses 缺省视为 0 → 不是 leech');
+  assert(!isLeech(null, 8), 'fsrs_state 为 null → 不是 leech');
+  assert(isLeech(at(3), 3), '阈值可调：lapses=3、阈值 3 → 是 leech');
+}
+
+// ============ 8. cloze 填空渲染（V14） ============
+
+console.log('\n— cloze 填空渲染 —');
+{
+  assert(!hasCloze('普通问题没有挖空'), '无 {{}} → 不是填空卡');
+  assert(hasCloze('光速约为 {{3×10^8}} m/s'), '含 {{}} → 是填空卡');
+  assert(
+    clozeFront('光速约为 {{3×10^8}} m/s') === '光速约为 [...] m/s',
+    '正面：{{X}} 挖空为 [...]'
+  );
+  assert(
+    clozeFull('光速约为 {{3×10^8}} m/s') === '光速约为 3×10^8 m/s',
+    '翻面：去花括号、保留答案'
+  );
+  assert(
+    clozeFront('{{A}} 与 {{B}} 都挖空') === '[...] 与 [...] 都挖空',
+    '多段挖空都替换'
+  );
+  assert(clozeFront('无挖空原样') === '无挖空原样', '非填空卡正面原样');
+  assert(clozeFull('无挖空原样') === '无挖空原样', '非填空卡翻面原样');
 }
 
 // ============ 结果 ============

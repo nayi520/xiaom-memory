@@ -11,11 +11,14 @@ export const dynamic = 'force-dynamic';
  * GET /api/library/concept/{id} —— 概念详情（JSON，供 iOS 原生端用）
  *
  * 契约：{ concept: {id,title,summary}, notes: [{id,rawContent,type,createdAt}],
- *        links: [{conceptId,title}], tags: [string] }
+ *        links: [{conceptId,title}], tags: [string],
+ *        backlinks: { concepts: [{conceptId,title}], notes: [{id,title,type,createdAt}] } }
  *   - concept.summary = concepts.summary（解释，可能为 null）
  *   - notes：关联且未软删的原始记录，按 createdAt 倒序；rawContent 可能为 null（语音/链接类记录）
  *   - links：关联概念（仅含对端仍存在的本人概念）
  *   - tags：来自关联记录的标签（去重）
+ *   - backlinks（V15，向后兼容新增）：引用本概念的概念（= links，concept_links 双向）
+ *     与记录（= notes，note_concepts→notes，title 取正文截断）。
  *
  * 复用 features/library/concept-detail.ts（与概念详情页同口径）。
  * 鉴权 getCurrentUser()，授权严格按当前 userId 过滤；不存在/非本人 → 404。

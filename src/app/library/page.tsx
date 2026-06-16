@@ -14,13 +14,22 @@
  */
 
 import Link from 'next/link';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
-import { concepts as conceptsTable, noteConcepts, notes } from '@/lib/db/schema';
+import {
+  concepts as conceptsTable,
+  noteConcepts,
+  notes,
+  noteTags,
+  profiles,
+  tags as tagsTable,
+} from '@/lib/db/schema';
 import { normalizeMode, runLibrarySearch, type SearchMode } from '@/features/library/search';
 import SearchResults from '@/features/library/components/SearchResults';
 import ConceptGraphPanel from '@/features/library/components/ConceptGraphPanel';
+import NewConceptButton from '@/features/library/components/NewConceptButton';
+import OnThisDay from '@/features/library/components/OnThisDay';
 import {
   PageShell,
   EmptyState,
@@ -65,7 +74,15 @@ interface DomainSummary {
 }
 
 interface Props {
-  searchParams: { q?: string; domain?: string; topic?: string; view?: string; mode?: string };
+  searchParams: {
+    q?: string;
+    domain?: string;
+    topic?: string;
+    view?: string;
+    mode?: string;
+    tag?: string;
+    fav?: string;
+  };
 }
 
 export default async function LibraryPage({ searchParams }: Props) {
@@ -74,16 +91,20 @@ export default async function LibraryPage({ searchParams }: Props) {
   const q = (searchParams.q ?? '').trim();
   const domain = searchParams.domain?.trim() || null;
   const topic = searchParams.topic?.trim() || null;
+  const tag = searchParams.tag?.trim() || null;
+  const favOnly = searchParams.fav === '1';
   const view = normalizeView(searchParams.view);
   const mode = normalizeMode(searchParams.mode);
 
-  // ---- 搜索模式（优先级最高；domain 作为筛选条件，mode 选择检索路） ----
+  // ---- 搜索模式（优先级最高；domain / tag 作为筛选条件，mode 选择检索路） ----
   if (q) {
     const result = user
-      ? await runLibrarySearch(db, user.id, { q, domain, mode })
+      ? await runLibrarySearch(db, user.id, { q, domain, tag, mode })
       : { hits: [], semanticUsed: false };
-    // 取领域清单供筛选 chips（与下钻同口径：本人全部概念的去重领域）。
-    const domainOptions = user ? await listDomains(db, user.id) : [];
+    // 取领域 / 标签清单供筛选 chips（与下钻同口径：本人全部概念的去重领域、全部标签）。
+    const [domainOptions, tagOptions] = user
+      ? await Promise.all([listDomains(db, user.id), listTags(db, user.id)])
+      : [[], []];
     return (
       <Shell q={q} view={view} domains={[]} activeDomain={null}>
         <SearchResults
@@ -91,8 +112,10 @@ export default async function LibraryPage({ searchParams }: Props) {
           hits={result.hits}
           semanticUsed={result.semanticUsed}
           domain={domain}
+          tag={tag}
           mode={mode}
           domainOptions={domainOptions}
+          tagOptions={tagOptions}
           modeLabels={MODE_LABELS}
         />
       </Shell>
@@ -117,10 +140,10 @@ export default async function LibraryPage({ searchParams }: Props) {
     );
   }
 
-  // ---- 取全量概念 + 记录关联数（个人库数据量小，内存聚合即可；drill/tree 共用） ----
+  // ---- 取全量概念 + 记录关联数 + 收藏 + 标签清单（个人库数据量小，内存聚合即可；drill/tree 共用） ----
   // 显式按 user_id 过滤（原靠 RLS）；note_concepts 内连接 notes 过滤 deleted_at is null：
   // 回收站内的记录不计入条数。note_concepts 经 concept join 限定到本人概念。
-  const [conceptData, ncData] = await Promise.all([
+  const [conceptData, ncData, profileRows, tagOptions] = await Promise.all([
     db
       .select({
         id: conceptsTable.id,
@@ -138,14 +161,51 @@ export default async function LibraryPage({ searchParams }: Props) {
       .innerJoin(notes, eq(notes.id, noteConcepts.noteId))
       .innerJoin(conceptsTable, eq(conceptsTable.id, noteConcepts.conceptId))
       .where(and(eq(conceptsTable.userId, user.id), isNull(notes.deletedAt))),
+    db
+      .select({ settings: profiles.settings })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1),
+    listTags(db, user.id),
   ]);
-  const concepts: ConceptRow[] = conceptData.map((c) => ({
+
+  // 收藏概念 id 集合（profiles.settings.favoriteConcepts）。
+  const favSettings = profileRows[0]?.settings;
+  const favRaw =
+    favSettings && typeof favSettings === 'object'
+      ? (favSettings as Record<string, unknown>).favoriteConcepts
+      : undefined;
+  const favoriteIds = new Set<string>(
+    Array.isArray(favRaw) ? favRaw.filter((v): v is string => typeof v === 'string') : []
+  );
+
+  // 标签筛选：取挂该标签的本人记录所关联到的概念 id 集合（tag 为空则不限制）。
+  let tagConceptIds: Set<string> | null = null;
+  if (tag) {
+    tagConceptIds = new Set<string>();
+    const rows = await db
+      .select({ concept_id: noteConcepts.conceptId })
+      .from(noteTags)
+      .innerJoin(tagsTable, eq(tagsTable.id, noteTags.tagId))
+      .innerJoin(notes, eq(notes.id, noteTags.noteId))
+      .innerJoin(noteConcepts, eq(noteConcepts.noteId, notes.id))
+      .where(
+        and(eq(tagsTable.userId, user.id), eq(tagsTable.name, tag), isNull(notes.deletedAt))
+      );
+    for (const r of rows) tagConceptIds.add(r.concept_id);
+  }
+
+  let concepts: ConceptRow[] = conceptData.map((c) => ({
     id: c.id,
     name: c.name,
     domain: c.domain,
     topic: c.topic,
     created_at: c.created_at instanceof Date ? c.created_at.toISOString() : String(c.created_at),
   }));
+
+  // 应用筛选：收藏（fav=1）/ 标签（tag=）。两者可叠加。
+  if (favOnly) concepts = concepts.filter((c) => favoriteIds.has(c.id));
+  if (tagConceptIds) concepts = concepts.filter((c) => tagConceptIds!.has(c.id));
   const noteCount = new Map<string, number>();
   for (const row of ncData) {
     const id = row.concept_id;
@@ -169,21 +229,28 @@ export default async function LibraryPage({ searchParams }: Props) {
     concepts: info.concepts,
   }));
 
+  // V15 筛选 chips（收藏 / 标签），各浏览态共用。
+  const filters = (
+    <BrowseFilters view={view} favOnly={favOnly} activeTag={tag} tagOptions={tagOptions} />
+  );
+
   // ---- 聚合总览模式：领域 → 主题 分组（数量徽标），一屏俯瞰 ----
   if (view === 'tree') {
     const groups = buildDomainTopicGroups(concepts, noteCount, domainOf, topicOf);
     return (
-      <Shell q={q} view={view} domains={[]} activeDomain={null}>
+      <Shell q={q} view={view} domains={[]} activeDomain={null} filters={filters}>
         <AggregatedView groups={groups} />
       </Shell>
     );
   }
 
-  // ---- 下钻 · 第三层：概念列表 ----
+  // ---- 下钻 · 第三层：概念列表（收藏置顶） ----
   if (domain && topic) {
-    const list = concepts.filter((c) => domainOf(c) === domain && topicOf(c) === topic);
+    const list = concepts
+      .filter((c) => domainOf(c) === domain && topicOf(c) === topic)
+      .sort(byFavoriteFirst(favoriteIds));
     return (
-      <Shell q={q} view={view} domains={domains} activeDomain={domain}>
+      <Shell q={q} view={view} domains={domains} activeDomain={domain} filters={filters}>
         <Breadcrumb
           parts={[
             { label: domain, href: `/library?domain=${encodeURIComponent(domain)}` },
@@ -198,6 +265,7 @@ export default async function LibraryPage({ searchParams }: Props) {
             title: c.name,
             count: noteCount.get(c.id) ?? 0,
             unit: '条记录',
+            pinned: favoriteIds.has(c.id),
           }))}
         />
       </Shell>
@@ -213,7 +281,7 @@ export default async function LibraryPage({ searchParams }: Props) {
       topics.set(t, (topics.get(t) ?? 0) + 1);
     }
     return (
-      <Shell q={q} view={view} domains={domains} activeDomain={domain}>
+      <Shell q={q} view={view} domains={domains} activeDomain={domain} filters={filters}>
         <Breadcrumb parts={[{ label: domain }]} />
         <DrillList
           empty="该领域下还没有主题"
@@ -230,8 +298,17 @@ export default async function LibraryPage({ searchParams }: Props) {
   }
 
   // ---- 下钻 · 第一层：领域列表（移动端卡片；桌面端左栏已列出领域，右侧给引导） ----
+  // 根层（未下钻、未筛选）展示「历史上的今天」。
+  const showOnThisDay = !favOnly && !tag ? <OnThisDay /> : undefined;
   return (
-    <Shell q={q} view={view} domains={domains} activeDomain={null}>
+    <Shell
+      q={q}
+      view={view}
+      domains={domains}
+      activeDomain={null}
+      filters={filters}
+      onThisDay={showOnThisDay}
+    >
       {/* 桌面：未选领域时，右侧给一条引导（左栏已是完整领域列表，避免重复罗列） */}
       <div className="hidden lg:block">
         {domains.length === 0 ? (
@@ -284,6 +361,32 @@ async function listDomains(
   return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-CN'));
 }
 
+/** 概念排序比较器：收藏的排前，其余保持原有顺序（创建时间倒序）。 */
+function byFavoriteFirst(favoriteIds: Set<string>) {
+  return (a: ConceptRow, b: ConceptRow) => {
+    const fa = favoriteIds.has(a.id) ? 0 : 1;
+    const fb = favoriteIds.has(b.id) ? 0 : 1;
+    return fa - fb;
+  };
+}
+
+/** 本人全部标签名（去重排序；用于知识库 / 搜索的标签筛选 chips）。 */
+async function listTags(
+  db: ReturnType<typeof getDb>,
+  userId: string
+): Promise<string[]> {
+  const rows = await db
+    .select({ name: tagsTable.name })
+    .from(tagsTable)
+    .where(eq(tagsTable.userId, userId));
+  const set = new Set<string>();
+  for (const r of rows) {
+    const n = r.name?.trim();
+    if (n) set.add(n);
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+}
+
 interface TopicGroup {
   name: string;
   concepts: { id: string; title: string; noteCount: number }[];
@@ -329,12 +432,18 @@ function Shell({
   view,
   domains,
   activeDomain,
+  filters,
+  onThisDay,
   children,
 }: {
   q: string;
   view: ViewMode;
   domains: DomainSummary[];
   activeDomain: string | null;
+  /** V15：筛选 chips（收藏 / 标签）；仅 drill/tree 非搜索态传入。 */
+  filters?: React.ReactNode;
+  /** V15：「历史上的今天」块；仅根层（无下钻/搜索）传入。 */
+  onThisDay?: React.ReactNode;
   children: React.ReactNode;
 }) {
   // 搜索态、tree/graph 视图不分栏；仅 drill 下钻态在桌面用「领域左栏 + 内容」主从布局。
@@ -363,6 +472,8 @@ function Shell({
             <AskIcon aria-hidden className="h-[18px] w-[18px]" />
             问知识库
           </Link>
+          {/* V15：手动新建概念入口（仅非搜索态展示，避免与搜索结果混淆） */}
+          {!q && <NewConceptButton />}
         </div>
       </header>
 
@@ -385,16 +496,91 @@ function Shell({
         </div>
       </form>
 
+      {/* V15 筛选 chips（收藏 / 标签）：仅 drill/tree 非搜索态 */}
+      {filters}
+
       {railed ? (
         // 主从双栏：左侧领域导航固定档（大屏略增），右侧内容自适应；大屏加大栏间距。
         <div className="flex-1 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-start lg:gap-8 xl:grid-cols-[18rem_minmax(0,1fr)] xl:gap-10">
           <DomainRail domains={domains} active={activeDomain} />
-          <div className="min-w-0">{children}</div>
+          <div className="min-w-0">
+            {onThisDay}
+            {children}
+          </div>
         </div>
       ) : (
-        <div className="flex-1">{children}</div>
+        <div className="flex-1">
+          {onThisDay}
+          {children}
+        </div>
       )}
     </PageShell>
+  );
+}
+
+// ============ V15 筛选 chips：收藏 + 标签 ============
+
+/** 构造保留 view 的下钻筛选 URL（切换 fav / tag；空值省略）。 */
+function browseHref(opts: { view: ViewMode; fav?: boolean; tag?: string | null }): string {
+  const p = new URLSearchParams();
+  if (opts.view === 'tree') p.set('view', 'tree');
+  if (opts.fav) p.set('fav', '1');
+  if (opts.tag) p.set('tag', opts.tag);
+  const qs = p.toString();
+  return qs ? `/library?${qs}` : '/library';
+}
+
+function BrowseFilters({
+  view,
+  favOnly,
+  activeTag,
+  tagOptions,
+}: {
+  view: ViewMode;
+  favOnly: boolean;
+  activeTag: string | null;
+  tagOptions: string[];
+}) {
+  const chipBase =
+    'rounded-pill px-2.5 py-1 text-xs font-medium transition focus-visible:outline-none';
+  const chipOn = 'bg-brand text-white shadow-sm';
+  const chipOff =
+    'border border-zinc-200 bg-white text-zinc-600 hover:border-brand hover:text-brand dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300';
+  return (
+    <div className="mb-4 space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="mr-0.5 text-xs text-zinc-400">筛选</span>
+        <Link
+          href={browseHref({ view, fav: !favOnly, tag: activeTag })}
+          aria-pressed={favOnly}
+          className={cn(chipBase, favOnly ? chipOn : chipOff)}
+        >
+          ★ 收藏
+        </Link>
+      </div>
+      {tagOptions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-0.5 text-xs text-zinc-400">标签</span>
+          <Link
+            href={browseHref({ view, fav: favOnly, tag: null })}
+            aria-pressed={!activeTag}
+            className={cn(chipBase, !activeTag ? chipOn : chipOff)}
+          >
+            全部
+          </Link>
+          {tagOptions.map((t) => (
+            <Link
+              key={t}
+              href={browseHref({ view, fav: favOnly, tag: t })}
+              aria-pressed={activeTag === t}
+              className={cn(chipBase, activeTag === t ? chipOn : chipOff, 'max-w-[12rem] truncate')}
+            >
+              #{t}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -581,6 +767,8 @@ interface DrillItem {
   subtitle?: string;
   count: number;
   unit: string;
+  /** V15：收藏概念置顶时加星标。 */
+  pinned?: boolean;
 }
 
 function DrillList({ items, empty }: { items: DrillItem[]; empty: string }) {
@@ -605,8 +793,13 @@ function DrillList({ items, empty }: { items: DrillItem[]; empty: string }) {
             )}
           >
             <span className="min-w-0">
-              <span className="block truncate font-semibold text-zinc-800 dark:text-zinc-100">
-                {item.title}
+              <span className="flex items-center gap-1.5 font-semibold text-zinc-800 dark:text-zinc-100">
+                {item.pinned && (
+                  <span aria-label="已收藏" title="已收藏" className="shrink-0 text-amber-400">
+                    ★
+                  </span>
+                )}
+                <span className="truncate">{item.title}</span>
               </span>
               {item.subtitle && (
                 <span className="mt-0.5 block text-xs text-zinc-400">{item.subtitle}</span>

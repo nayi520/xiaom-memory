@@ -26,11 +26,31 @@ export interface ConceptDetailLink {
   conceptId: string;
   title: string;
 }
+/** 反向链接：引用本概念的概念（concept_links 双向）/ 记录（note_concepts→notes）。 */
+export interface ConceptBacklinkNote {
+  id: string;
+  title: string;
+  type: string;
+  createdAt: string;
+}
+export interface ConceptBacklinks {
+  concepts: ConceptDetailLink[];
+  notes: ConceptBacklinkNote[];
+}
 export interface ConceptDetail {
   concept: { id: string; title: string; summary: string | null };
   notes: ConceptDetailNote[];
   links: ConceptDetailLink[];
   tags: string[];
+  /** V15：反向链接——哪些概念/记录引用了它（向后兼容新增字段）。 */
+  backlinks: ConceptBacklinks;
+}
+
+/** 记录正文取首个非空，截断为标题。 */
+function noteTitle(raw: string | null, max = 60): string {
+  const t = (raw ?? '').replace(/\s+/g, ' ').trim();
+  if (!t) return '（无文字内容）';
+  return t.length > max ? `${t.slice(0, max)}…` : t;
 }
 
 function isoOf(v: Date | string): string {
@@ -118,10 +138,23 @@ export async function getConceptDetail(
     for (const o of others) links.push({ conceptId: o.id, title: o.name });
   }
 
+  // 反向链接（V15）：引用本概念的概念 = 双向 concept_links（即 links）；
+  // 引用本概念的记录 = note_concepts→notes（即 notes，取正文做标题）。
+  const backlinks: ConceptBacklinks = {
+    concepts: links,
+    notes: notes.map((n) => ({
+      id: n.id,
+      title: noteTitle(n.rawContent),
+      type: n.type,
+      createdAt: n.createdAt,
+    })),
+  };
+
   return {
     concept: { id: concept.id, title: concept.name, summary: concept.summary },
     notes,
     links,
     tags,
+    backlinks,
   };
 }

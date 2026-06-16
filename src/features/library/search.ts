@@ -71,6 +71,11 @@ export interface LibrarySearchOptions {
   domain?: string | null;
   /** 检索模式，默认 'hybrid'。 */
   mode?: SearchMode;
+  /**
+   * V15 标签筛选：仅返回挂了该标签的记录，以及「关联记录挂了该标签」的概念。
+   * 与既有 domain 筛选可叠加（同时满足）。tag 为空则不限制。
+   */
+  tag?: string | null;
 }
 
 // ============ 纯函数：合并去重 ============
@@ -210,6 +215,7 @@ export async function runLibrarySearch(
   const query = opts.q.trim();
   if (!query) return { hits: [], semanticUsed: false };
   const domain = opts.domain?.trim() || null;
+  const tag = opts.tag?.trim() || null;
   const mode = opts.mode ?? 'hybrid';
   const runKeyword = mode === 'hybrid' || mode === 'keyword';
   const runSemantic = mode === 'hybrid' || mode === 'semantic';
@@ -233,8 +239,40 @@ export async function runLibrarySearch(
       for (const n of dNotes) domainNoteIds.add(n.note_id);
     }
   }
-  const keepConcept = (id: string) => !domain || domainConceptIds.has(id);
-  const keepNote = (id: string) => !domain || domainNoteIds.has(id);
+
+  // V15 tag 过滤：取挂该标签的本人记录 id 集合，以及这些记录关联到的概念 id 集合。
+  // 标签按本人 tags.name 精确匹配（与关键词路的标签命中同口径）。tag 为空则不限制。
+  const tagNoteIds = new Set<string>();
+  const tagConceptIds = new Set<string>();
+  if (tag) {
+    const tagRows = await db
+      .select({ id: tags.id })
+      .from(tags)
+      .where(and(eq(tags.userId, userId), eq(tags.name, tag)))
+      .limit(1);
+    const tagId = tagRows[0]?.id;
+    if (tagId) {
+      const tNotes = await db
+        .select({ note_id: noteTags.noteId })
+        .from(noteTags)
+        .innerJoin(notes, eq(notes.id, noteTags.noteId))
+        .where(and(eq(noteTags.tagId, tagId), eq(notes.userId, userId), isNull(notes.deletedAt)));
+      for (const n of tNotes) tagNoteIds.add(n.note_id);
+      if (tagNoteIds.size > 0) {
+        const tConcepts = await db
+          .select({ concept_id: noteConcepts.conceptId })
+          .from(noteConcepts)
+          .where(inArray(noteConcepts.noteId, Array.from(tagNoteIds)));
+        for (const c of tConcepts) tagConceptIds.add(c.concept_id);
+      }
+    }
+  }
+
+  // 概念/记录是否保留：domain 与 tag 两个筛选叠加（均不设则全放行）。
+  const keepConcept = (id: string) =>
+    (!domain || domainConceptIds.has(id)) && (!tag || tagConceptIds.has(id));
+  const keepNote = (id: string) =>
+    (!domain || domainNoteIds.has(id)) && (!tag || tagNoteIds.has(id));
 
   const toConcept = (r: { id: string; name: string; summary: string | null; created_at: Date | string }) =>
     conceptToHit({ id: r.id, name: r.name, summary: r.summary, created_at: iso(r.created_at) });
@@ -249,7 +287,8 @@ export async function runLibrarySearch(
   let keywordHits: RawHit[] = [];
   let tagHits: RawHit[] = [];
   if (runKeyword) {
-    const [cName, cSummary, nRaw, nSummary, nWhy, tagRes] = await Promise.all([
+    // V15：记录正文全文检索补齐 transcript（语音转写正文），与 raw_content/summary/why_important 并列。
+    const [cName, cSummary, nRaw, nTranscript, nSummary, nWhy, tagRes] = await Promise.all([
       db.select(conceptCols).from(concepts)
         .where(and(eq(concepts.userId, userId), ilike(concepts.name, pattern)))
         .limit(KEYWORD_LIMIT),
@@ -258,6 +297,9 @@ export async function runLibrarySearch(
         .limit(KEYWORD_LIMIT),
       db.select(noteCols).from(notes)
         .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.rawContent, pattern)))
+        .limit(KEYWORD_LIMIT),
+      db.select(noteCols).from(notes)
+        .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.transcript, pattern)))
         .limit(KEYWORD_LIMIT),
       db.select(noteCols).from(notes)
         .where(and(eq(notes.userId, userId), isNull(notes.deletedAt), ilike(notes.summary, pattern)))
@@ -274,6 +316,7 @@ export async function runLibrarySearch(
       ...cName.filter((r) => keepConcept(r.id)).map(toConcept),
       ...cSummary.filter((r) => keepConcept(r.id)).map(toConcept),
       ...nRaw.filter((r) => keepNote(r.id)).map(toNote),
+      ...nTranscript.filter((r) => keepNote(r.id)).map(toNote),
       ...nSummary.filter((r) => keepNote(r.id)).map(toNote),
       ...nWhy.filter((r) => keepNote(r.id)).map(toNote),
     ];

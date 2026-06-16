@@ -19,8 +19,11 @@ import {
   noteTags,
   tags as tagsTable,
 } from '@/lib/db/schema';
+import { profiles } from '@/lib/db/schema';
 import { excerpt } from '@/features/library/search';
 import ConceptEditor from '@/features/library/components/ConceptEditor';
+import NewCardButton from '@/features/library/components/NewCardButton';
+import FavoriteToggle from '@/features/library/components/FavoriteToggle';
 import {
   PageShell,
   SectionTitle,
@@ -76,8 +79,8 @@ export default async function ConceptDetailPage({
   const concept = conceptRows[0];
   if (!concept) notFound();
 
-  // 关联记录、卡片、概念链接并行取
-  const [ncRows, cards, linkRows] = await Promise.all([
+  // 关联记录、卡片、概念链接、收藏状态并行取
+  const [ncRows, cards, linkRows, profileRows] = await Promise.all([
     db
       .select({
         id: notesTable.id,
@@ -111,7 +114,20 @@ export default async function ConceptDetailPage({
       })
       .from(conceptLinks)
       .where(or(eq(conceptLinks.conceptA, concept.id), eq(conceptLinks.conceptB, concept.id))),
+    db
+      .select({ settings: profiles.settings })
+      .from(profiles)
+      .where(eq(profiles.id, user.id))
+      .limit(1),
   ]);
+
+  // 收藏状态（profiles.settings.favoriteConcepts）。
+  const favSettings = profileRows[0]?.settings;
+  const favList =
+    favSettings && typeof favSettings === 'object'
+      ? (favSettings as Record<string, unknown>).favoriteConcepts
+      : undefined;
+  const isFavorite = Array.isArray(favList) && favList.includes(concept.id);
 
   const notes: NoteRow[] = ncRows
     .map((r) => ({
@@ -192,6 +208,11 @@ export default async function ConceptDetailPage({
         }}
       />
 
+      {/* 收藏 / 置顶（V15） */}
+      <div className="mt-3">
+        <FavoriteToggle conceptId={concept.id} initial={isFavorite} />
+      </div>
+
       {/* 标签（来自关联记录） */}
       {tagNames.length > 0 && (
         <section className="mt-6">
@@ -213,10 +234,11 @@ export default async function ConceptDetailPage({
         </section>
       )}
 
-      {/* 关联概念 */}
+      {/* 关联概念（反向链接：双向引用本概念的概念） */}
       {links.length > 0 && (
         <section className="mt-6">
           <SectionTitle>关联概念（{links.length}）</SectionTitle>
+          <p className="mb-2 text-xs text-zinc-400">与本概念互相引用的概念。</p>
           <ul className="space-y-2.5">
             {links.map((l) => {
               const otherId = l.concept_a === concept.id ? l.concept_b : l.concept_a;
@@ -247,9 +269,12 @@ export default async function ConceptDetailPage({
 
       {/* 关联卡片 */}
       <section className="mt-6">
-        <SectionTitle>复习卡片（{(cards ?? []).length}）</SectionTitle>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <SectionTitle className="mb-0">复习卡片（{(cards ?? []).length}）</SectionTitle>
+          <NewCardButton conceptId={concept.id} />
+        </div>
         {(cards ?? []).length === 0 ? (
-          <p className="text-sm text-zinc-400">还没有卡片。</p>
+          <p className="text-sm text-zinc-400">还没有卡片。点「新建卡片」手动添加。</p>
         ) : (
           <ul className="space-y-2.5">
             {(cards ?? []).map((card) => {

@@ -9,6 +9,7 @@ import ReviewDailyGoalPicker from '@/features/review/components/ReviewDailyGoalP
 import ProfileCard from '@/features/settings/components/ProfileCard';
 import ChangePasswordCard from '@/features/settings/components/ChangePasswordCard';
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
+import ExportAnkiButton from '@/features/settings/components/ExportAnkiButton';
 import { OnboardingSettings } from '@/features/onboarding';
 import {
   PageShell,
@@ -92,6 +93,10 @@ export default function SettingsPage() {
             把整理后的概念（按领域 › 主题组织，附其下原始记录）导出为一份 Markdown 文件，方便备份或迁移。
           </p>
           <ExportMarkdownButton />
+          <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+            或把复习卡片导出为 Anki 可导入的 CSV（问题, 答案, 概念），在 Anki「文件 → 导入」中加载。
+          </p>
+          <ExportAnkiButton />
         </section>
 
         <section className="space-y-2.5">

@@ -34,16 +34,24 @@ interface Props {
   hits: SearchHit[];
   semanticUsed: boolean;
   domain: string | null;
+  tag: string | null;
   mode: SearchMode;
   domainOptions: string[];
+  tagOptions: string[];
   modeLabels: Record<SearchMode, string>;
 }
 
-/** 构造保留 q 的搜索 URL（可覆盖 domain / mode；空值省略，mode=hybrid 省略以保持简洁）。 */
-function searchHref(q: string, domain: string | null, mode: SearchMode): string {
+/** 构造保留 q 的搜索 URL（可覆盖 domain / tag / mode；空值省略，mode=hybrid 省略以保持简洁）。 */
+function searchHref(
+  q: string,
+  domain: string | null,
+  tag: string | null,
+  mode: SearchMode
+): string {
   const p = new URLSearchParams();
   p.set('q', q);
   if (domain) p.set('domain', domain);
+  if (tag) p.set('tag', tag);
   if (mode !== 'hybrid') p.set('mode', mode);
   return `/library?${p.toString()}`;
 }
@@ -53,8 +61,10 @@ export default function SearchResults({
   hits,
   semanticUsed,
   domain,
+  tag,
   mode,
   domainOptions,
+  tagOptions,
   modeLabels,
 }: Props) {
   const chipBase =
@@ -79,14 +89,14 @@ export default function SearchResults({
         </Link>
       </div>
 
-      {/* 筛选 chips：检索模式 + 领域 */}
+      {/* 筛选 chips：检索模式 + 领域 + 标签 */}
       <div className="mb-3 space-y-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-0.5 text-xs text-zinc-400">模式</span>
           {MODES.map((m) => (
             <Link
               key={m}
-              href={searchHref(q, domain, m)}
+              href={searchHref(q, domain, tag, m)}
               aria-pressed={mode === m}
               className={cn(chipBase, mode === m ? chipOn : chipOff)}
             >
@@ -98,7 +108,7 @@ export default function SearchResults({
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="mr-0.5 text-xs text-zinc-400">领域</span>
             <Link
-              href={searchHref(q, null, mode)}
+              href={searchHref(q, null, tag, mode)}
               aria-pressed={!domain}
               className={cn(chipBase, !domain ? chipOn : chipOff)}
             >
@@ -107,11 +117,33 @@ export default function SearchResults({
             {domainOptions.map((d) => (
               <Link
                 key={d}
-                href={searchHref(q, d, mode)}
+                href={searchHref(q, d, tag, mode)}
                 aria-pressed={domain === d}
                 className={cn(chipBase, domain === d ? chipOn : chipOff, 'max-w-[12rem] truncate')}
               >
                 {d}
+              </Link>
+            ))}
+          </div>
+        )}
+        {tagOptions.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-0.5 text-xs text-zinc-400">标签</span>
+            <Link
+              href={searchHref(q, domain, null, mode)}
+              aria-pressed={!tag}
+              className={cn(chipBase, !tag ? chipOn : chipOff)}
+            >
+              全部
+            </Link>
+            {tagOptions.map((t) => (
+              <Link
+                key={t}
+                href={searchHref(q, domain, t, mode)}
+                aria-pressed={tag === t}
+                className={cn(chipBase, tag === t ? chipOn : chipOff, 'max-w-[12rem] truncate')}
+              >
+                #{t}
               </Link>
             ))}
           </div>
@@ -128,7 +160,11 @@ export default function SearchResults({
         <EmptyState
           art={<EmptySearch />}
           title="没找到相关内容"
-          description={domain ? '该领域下没有匹配，试试切到「全部」领域或换个关键词。' : '换个关键词，或检查有没有错别字。'}
+          description={
+            domain || tag
+              ? '当前筛选下没有匹配，试试切到「全部」或换个关键词。'
+              : '换个关键词，或检查有没有错别字。'
+          }
         />
       ) : (
         <ul className="space-y-2.5">
