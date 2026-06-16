@@ -53,12 +53,38 @@ create table if not exists verification_tokens (
    -- 永不过期：expires_at 省略 / null。多次可用：调大 max_uses。
    ```
 
+### 管理员直接建号（适合 2-3 人熟人小圈子）
+
+`POST /api/admin/users`（头 `Authorization: Bearer $ADMIN_SECRET`，鉴权与 `/api/admin/invite`
+完全一致）让管理员**免邀请码、免邮箱验证**直接开通账号：bcrypt 哈希密码 → 复用
+`adapter.createUser` 建 users + profile → 显式置 `email_verified=true`（预验证，凭证登录可直接登入）。
+**无需新迁移**（复用 `users` 既有 `email_verified` / `password_hash` / `name`）。
+
+- 契约：body `{ email, password?, name? }`
+  - `email` 必填，归一化小写 + 格式校验；`password` 省略则**服务端用 crypto 生成 16 位强随机密码**，
+    提供则须 ≥ `MIN_PASSWORD_LENGTH`(8)；`name` 可选，trim 后 1–24 字符。
+  - → 200 `{ ok:true, userId, email, password? }`（`password` **仅在服务端生成时回显一次**供转交）。
+  - → 409 `{ error:'该邮箱已注册' }`；400 校验失败；401/500/503 鉴权失败 / 未配 secret / 库不可用。
+  - **绝不打印 / 日志 password 或 hash。**
+- `GET /api/admin/users`（同守卫）→ `{ ok:true, count, users:[{ email, name, emailVerified, createdAt }] }`，
+  **绝不含任何哈希 / 密码**，供管理员查看已开通账号。
+
+纯「管理员建号」模式：设 **`REGISTRATION_MODE=closed`**（关闭公开注册，`/api/register` 返回 403）
++ 用本端点开号。curl 示例（省略 password 则响应返回生成的密码）：
+
+```bash
+curl -X POST https://memory.nayitools.cn/api/admin/users \
+  -H "Authorization: Bearer $ADMIN_SECRET" -H 'Content-Type: application/json' \
+  -d '{"email":"friend@example.com","name":"老王"}'
+# → {"ok":true,"userId":"...","email":"friend@example.com","password":"<生成的强随机密码>"}
+```
+
 ### 注册门禁相关环境变量
 
 | 变量 | 必填 | 说明 |
 |---|---|---|
 | `REGISTRATION_MODE` | 选填 | `open` / `invite`（默认）/ `closed`。缺省或非法值按 `invite`。 |
-| `ADMIN_SECRET` | 启用发码端点时 | `POST /api/admin/invite` 的 Bearer 密钥。`openssl rand -hex 32`。不配则只能 SQL 直插发码。 |
+| `ADMIN_SECRET` | 启用管理端点时 | `POST /api/admin/invite`（发码）与 `POST`/`GET /api/admin/users`（直接建号 / 列账号）的 Bearer 密钥。`openssl rand -hex 32`。不配则这些端点返回 500（发码也可 SQL 直插兜底）。 |
 | `CAPTCHA_SECRET` | 选填 | 注册验证码（签名算术挑战）签名密钥；缺省回落 `AUTH_SECRET`。 |
 | `CAPTCHA_DISABLED` | 选填 | 设 `1`/`true` 关闭注册验证码（默认启用）。 |
 
