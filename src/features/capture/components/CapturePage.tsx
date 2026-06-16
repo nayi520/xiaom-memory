@@ -7,16 +7,18 @@ import type { CaptureTab, RecentItem } from '../types';
 import TextCapture from './TextCapture';
 import VoiceCapture from './VoiceCapture';
 import LinkCapture from './LinkCapture';
+import ImageCapture from './ImageCapture';
 import RecentNotes from './RecentNotes';
 import DashboardPanel from './DashboardPanel';
 import { OUTBOX_SYNCED_EVENT } from '@/features/offline/OfflineProvider';
-import { PageShell, TextIcon, VoiceIcon, LinkIcon, AiIcon, useToast, cn } from '@/components/ui';
+import { PageShell, TextIcon, VoiceIcon, LinkIcon, ImageIcon, AiIcon, useToast, cn } from '@/components/ui';
 import type { LucideIcon } from '@/components/ui';
 
 const TABS: { key: CaptureTab; label: string; Icon: LucideIcon }[] = [
   { key: 'text', label: '文本', Icon: TextIcon },
   { key: 'voice', label: '语音', Icon: VoiceIcon },
   { key: 'link', label: '链接', Icon: LinkIcon },
+  { key: 'image', label: '图片', Icon: ImageIcon },
 ];
 
 export default function CapturePage() {
@@ -121,6 +123,11 @@ export default function CapturePage() {
     setRecent((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
+  /** 捕获后就地编辑成功 → 用返回的最新字段替换该条（V13）。 */
+  const editNote = useCallback((id: string, patch: Partial<RecentItem>) => {
+    setRecent((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  }, []);
+
   const handlers = { addOptimistic, confirmNote, updateNote, failNote, queueNote };
 
   return (
@@ -173,6 +180,7 @@ export default function CapturePage() {
             {tab === 'text' && <TextCapture {...handlers} />}
             {tab === 'voice' && <VoiceCapture {...handlers} />}
             {tab === 'link' && <LinkCapture {...handlers} />}
+            {tab === 'image' && <ImageCapture {...handlers} />}
           </div>
 
           {/* 首次使用引导：一句话点明「记下后会发生什么」，降低上手门槛；附「使用帮助」入口。 */}
@@ -194,14 +202,14 @@ export default function CapturePage() {
           {/* 移动端：概览（待复习 + 知识概览）+ 最近捕获，紧随捕获区之后。 */}
           <div className="mt-8 space-y-8 lg:hidden">
             <DashboardPanel />
-            <RecentNotes items={recent} onTrash={removeNote} />
+            <RecentNotes items={recent} onTrash={removeNote} onEdited={editNote} />
           </div>
         </div>
 
         {/* 桌面端：概览作为右栏常驻——待复习 / 知识概览 / 最近捕获。 */}
         <aside className="hidden space-y-6 lg:block">
           <DashboardPanel />
-          <RecentNotes items={recent} onTrash={removeNote} keepWhenEmpty />
+          <RecentNotes items={recent} onTrash={removeNote} onEdited={editNote} keepWhenEmpty />
         </aside>
       </div>
     </PageShell>

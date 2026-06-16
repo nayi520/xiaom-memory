@@ -11,7 +11,7 @@ export type RecentItem = Note & {
   retry?: () => void;
 };
 
-export type CaptureTab = 'text' | 'voice' | 'link';
+export type CaptureTab = 'text' | 'voice' | 'link' | 'image';
 
 /** CapturePage 提供给三个录入组件的回调 */
 export interface CaptureHandlers {

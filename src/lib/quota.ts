@@ -19,8 +19,8 @@ import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { usageCounters } from '@/lib/db/schema';
 
-/** 配额计量的操作类型（= usage_counters.kind 取值）。 */
-export type QuotaKind = 'ask' | 'transcribe' | 'clip' | 'embedding';
+/** 配额计量的操作类型（= usage_counters.kind 取值）。ocr=图片转文字（V13，qwen-vl）。 */
+export type QuotaKind = 'ask' | 'transcribe' | 'clip' | 'embedding' | 'ocr';
 
 /** 各 kind 的 env 变量名与缺省每日上限（够日常自用）。 */
 const QUOTA_CONFIG: Record<QuotaKind, { env: string; fallback: number }> = {
@@ -28,6 +28,8 @@ const QUOTA_CONFIG: Record<QuotaKind, { env: string; fallback: number }> = {
   transcribe: { env: 'QUOTA_TRANSCRIBE_DAILY', fallback: 50 },
   clip: { env: 'QUOTA_CLIP_DAILY', fallback: 100 },
   embedding: { env: 'QUOTA_EMBED_DAILY', fallback: 500 },
+  // 图片 OCR（qwen-vl 多模态）：与转写同档（图片捕获频率与语音相当）。
+  ocr: { env: 'QUOTA_OCR_DAILY', fallback: 50 },
 };
 
 /** 解析某 kind 的每日上限：env 有合法整数则用之，否则用缺省。负数 = 不限。 */

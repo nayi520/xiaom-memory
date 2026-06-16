@@ -1,13 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import type { RecentItem } from '../types';
 import NoteDeleteButton from './NoteDeleteButton';
+import RecentNoteEditor from './RecentNoteEditor';
+import NoteImage from '@/features/library/components/NoteImage';
 import {
   SectionTitle,
   Badge,
   Markdown,
   NoteTypeIcon,
   WhyIcon,
+  EditIcon,
   SuccessIcon,
   FailIcon,
   RestoreIcon,
@@ -17,6 +21,11 @@ import {
 /** 最近记录正文（raw_content/transcript，Markdown 渲染）；纯链接类无正文时回退 URL 文本。 */
 function bodyOf(item: RecentItem): string {
   return item.raw_content || item.transcript || item.url || '';
+}
+
+/** 是否为已落库（可编辑/可删/可显示图片）的真实记录（非乐观占位/保存中/失败）。 */
+function isPersisted(item: RecentItem): boolean {
+  return !item.pending && !item.failed && !item.queued && !item.id.startsWith('temp-');
 }
 
 function timeAgo(iso: string): string {
@@ -32,15 +41,21 @@ function timeAgo(iso: string): string {
 export default function RecentNotes({
   items,
   onTrash,
+  onEdited,
   className,
   /** 列表为空时是否仍渲染区块（桌面右栏常驻用），并显示占位提示。 */
   keepWhenEmpty = false,
 }: {
   items: RecentItem[];
   onTrash?: (id: string) => void;
+  /** 就地编辑保存成功后把最新字段写回该条（V13）。 */
+  onEdited?: (id: string, patch: Partial<RecentItem>) => void;
   className?: string;
   keepWhenEmpty?: boolean;
 }) {
+  // 当前处于就地编辑态的记录 id（同一时刻只编辑一条）。
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   if (items.length === 0 && !keepWhenEmpty) return null;
 
   return (
@@ -70,11 +85,29 @@ export default function RecentNotes({
               item.pending && 'opacity-70'
             )}
           >
+            {editingId === item.id ? (
+              <RecentNoteEditor
+                item={item}
+                onSaved={(patch) => {
+                  onEdited?.(item.id, patch);
+                  setEditingId(null);
+                }}
+                onCancel={() => setEditingId(null)}
+              />
+            ) : (
             <div className="flex items-start gap-2.5">
               <span className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500">
                 <NoteTypeIcon type={item.type} className="h-[18px] w-[18px]" />
               </span>
               <div className="min-w-0 flex-1">
+                {/* 图片记录：签名 URL 缩略图（懒加载、占位防抖）。 */}
+                {item.type === 'image' && item.media_path && isPersisted(item) && (
+                  <NoteImage
+                    mediaPath={item.media_path}
+                    alt={bodyOf(item) || '图片记录'}
+                    className="mb-2 max-h-40"
+                  />
+                )}
                 {/* 正文用 Markdown 渲染；feed 里保持紧凑，超高度淡出截断（max-h + overflow） */}
                 <div className="relative max-h-32 overflow-hidden">
                   <Markdown
@@ -127,14 +160,28 @@ export default function RecentNotes({
                   )}
                 </div>
               </div>
-              {/* 已落库的记录才可删除（乐观占位 / 保存中不显示） */}
-              {!item.pending && !item.failed && !item.id.startsWith('temp-') && (
-                <NoteDeleteButton
-                  noteId={item.id}
-                  onTrashed={() => onTrash?.(item.id)}
-                />
+              {/* 已落库的记录：就地编辑 + 删除（乐观占位 / 保存中不显示） */}
+              {isPersisted(item) && (
+                <div className="flex shrink-0 items-center gap-0.5">
+                  {onEdited && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingId(item.id)}
+                      aria-label="编辑"
+                      title="编辑"
+                      className="rounded-md p-1.5 text-zinc-400 opacity-0 transition hover:bg-zinc-100 hover:text-brand focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-zinc-800"
+                    >
+                      <EditIcon aria-hidden className="h-4 w-4" />
+                    </button>
+                  )}
+                  <NoteDeleteButton
+                    noteId={item.id}
+                    onTrashed={() => onTrash?.(item.id)}
+                  />
+                </div>
               )}
             </div>
+            )}
           </li>
         ))}
       </ul>

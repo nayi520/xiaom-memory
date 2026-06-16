@@ -29,6 +29,14 @@ export const CLAUDE_MODELS = {
 
 export type ClaudeModelTier = keyof typeof CLAUDE_MODELS;
 
+/**
+ * 图片 OCR 多模态模型（V13 图片捕获 · qwen-vl 系列）。
+ * 走同一 DashScope OpenAI 兼容 /chat/completions 端点，消息 content 用「图文混排数组」
+ *（{type:'image_url'} + {type:'text'}）。默认 qwen-vl-plus，可经 env 覆盖（如 qwen-vl-max）。
+ */
+export const QWEN_VL_MODEL =
+  process.env.MEMORY_QWEN_VL ?? 'qwen-vl-plus';
+
 /** DashScope OpenAI 兼容端点（base_url） */
 const DASHSCOPE_BASE_URL =
   process.env.DASHSCOPE_BASE_URL ?? 'https://dashscope.aliyuncs.com/compatible-mode/v1';
@@ -49,6 +57,14 @@ export class LlmJsonError extends Error {
     super(message);
     this.name = 'LlmJsonError';
     this.lastOutput = lastOutput;
+  }
+}
+
+/** 图片 OCR（qwen-vl 多模态）调用失败（HTTP / 业务错误）。调用入口据此优雅降级。 */
+export class LlmVisionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LlmVisionError';
   }
 }
 
@@ -328,4 +344,125 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
     })();
 
   return buildLlmClient(complete, stream);
+}
+
+// ============ 图片 OCR（V13 图片捕获 · qwen-vl 多模态） ============
+
+/** OCR 默认提示词：忠实抽取图片中的文字，不臆造、不翻译、不解读。 */
+const OCR_PROMPT_DEFAULT =
+  '请提取这张图片中的所有文字内容，按从上到下、从左到右的自然阅读顺序输出为纯文本。' +
+  '保留原有的换行与段落结构。只输出图片里实际存在的文字，不要翻译、不要解释、不要补充任何图片中没有的内容。' +
+  '如果图片中没有任何文字，则只回复"（图片中未识别到文字）"。';
+
+export interface OcrOpts {
+  /** 自定义提示词（默认忠实抽取文字）。 */
+  prompt?: string;
+  /** 任务标识，用于用量日志（默认 'OCR'）。 */
+  task?: string;
+  /** 用量记录回调（默认 console）。 */
+  logUsage?: UsageLogger;
+}
+
+/**
+ * 用 qwen-vl 多模态模型对一张「公网可访问的图片 URL」做 OCR（图片转文字），返回整段文本。
+ *
+ * 形态对齐 transcribe/funasr：调用方先把图片落 OSS 并拿到签名 URL，再把 URL 交给本函数；
+ * 走 DashScope OpenAI 兼容 /chat/completions，单条 user 消息的 content 为「图文混排数组」。
+ *
+ * @param imageUrl 公网可访问的图片 URL（http/https；调用方用 OSS 签名 URL）
+ * @param opts     提示词 / 任务名 / 用量回调（可选）
+ * @returns        { text } OCR 出的纯文本（可能为空串——纯图无字时由调用方决定如何呈现）
+ * @throws LlmKeyMissingError 未配置 DASHSCOPE_API_KEY（调用入口应据此优雅降级）
+ * @throws LlmVisionError     提交失败 / HTTP 错误 / 返回异常
+ */
+export async function ocrImageUrl(
+  imageUrl: string,
+  opts: OcrOpts = {}
+): Promise<{ text: string }> {
+  const apiKey = process.env.DASHSCOPE_API_KEY;
+  if (!apiKey) throw new LlmKeyMissingError();
+
+  if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
+    throw new LlmVisionError(
+      `OCR 需要公网可访问的图片 URL（http/https），收到：${String(imageUrl).slice(0, 120)}`
+    );
+  }
+
+  const task = opts.task ?? 'OCR';
+  const prompt = opts.prompt ?? OCR_PROMPT_DEFAULT;
+  const logUsage: UsageLogger =
+    opts.logUsage ??
+    ((u) =>
+      console.log(
+        `[llm] task=${u.task} model=${u.model} in=${u.inputTokens} out=${u.outputTokens}`
+      ));
+
+  // OpenAI 兼容多模态消息：单条 user，content 为图文数组（图在前、文在后）。
+  const body = {
+    model: QWEN_VL_MODEL,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: imageUrl } },
+          { type: 'text', text: prompt },
+        ],
+      },
+    ],
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(DASHSCOPE_CHAT_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw new LlmVisionError(
+      `qwen-vl 请求网络错误（task=${task}）：${err instanceof Error ? err.message : String(err)}`
+    );
+  }
+
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new LlmVisionError(
+      `DashScope（qwen-vl）API ${res.status}（task=${task}）：${detail.slice(0, 300)}`
+    );
+  }
+
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: unknown } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
+  };
+
+  try {
+    await logUsage({
+      task,
+      model: QWEN_VL_MODEL,
+      inputTokens: data.usage?.prompt_tokens ?? 0,
+      outputTokens: data.usage?.completion_tokens ?? 0,
+    });
+  } catch (err) {
+    console.error('[llm] OCR usage 日志写入失败：', err);
+  }
+
+  // qwen-vl 兼容端点的 content 通常是字符串；个别版本可能回图文数组，做兜底拼接。
+  const raw = data.choices?.[0]?.message?.content;
+  let text = '';
+  if (typeof raw === 'string') {
+    text = raw;
+  } else if (Array.isArray(raw)) {
+    text = raw
+      .map((part) =>
+        part && typeof part === 'object' && 'text' in part
+          ? String((part as { text?: unknown }).text ?? '')
+          : ''
+      )
+      .join('');
+  }
+  return { text: text.trim() };
 }

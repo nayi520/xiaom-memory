@@ -25,6 +25,9 @@ export const AUDIO_PREFIX = 'audio';
 /** 头像对象 key 的统一前缀（用户资料头像，私有 bucket，展示靠签名 URL）。 */
 export const AVATAR_PREFIX = 'avatars';
 
+/** 捕获图片对象 key 的统一前缀（图片捕获 V13，私有 bucket，展示/OCR 靠签名 URL）。 */
+export const IMAGE_PREFIX = 'images';
+
 /** 签名 URL 默认有效期：1 小时（与旧 createSignedUrl(path, 3600) 对齐）。 */
 export const DEFAULT_EXPIRES_SEC = 3600;
 
@@ -172,6 +175,37 @@ export async function uploadAvatar(
   const client = makeClient();
   const ext = avatarExtFromContentType(contentType);
   const key = `${AVATAR_PREFIX}/${userId}/${randomUuid()}.${ext}`;
+
+  // ali-oss put 接收 Buffer；Uint8Array 统一包成 Buffer（零拷贝视图）。
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body.buffer, body.byteOffset, body.byteLength);
+
+  await client.put(key, buf, {
+    mime: contentType,
+    headers: { 'Content-Type': contentType },
+  });
+
+  return { key };
+}
+
+/**
+ * 上传捕获图片到 `images/{userId}/{uuid}.<ext>`，返回对象 key（写入 notes.media_path）。
+ * 与 uploadAudio / uploadAvatar 同构：复用 makeClient / randomUuid，仅前缀与扩展名映射不同。
+ * 私有 bucket，展示与 OCR 一律用 getSignedUrl 现签（库里只存 key）。
+ * 扩展名映射复用 avatarExtFromContentType（同为 png/jpeg/webp 白名单，路由层已校验）。
+ *
+ * @param userId      当前用户 id（应用层鉴权得到，决定 key 前缀，隔离各用户）
+ * @param body        图片字节（Buffer 或 Uint8Array）
+ * @param contentType MIME 类型（image/png | image/jpeg | image/webp），决定扩展名与对象 Content-Type 头
+ */
+export async function uploadImage(
+  userId: string,
+  body: Buffer | Uint8Array,
+  contentType: string
+): Promise<{ key: string }> {
+  if (!userId) throw new Error('uploadImage: 缺少 userId');
+  const client = makeClient();
+  const ext = avatarExtFromContentType(contentType);
+  const key = `${IMAGE_PREFIX}/${userId}/${randomUuid()}.${ext}`;
 
   // ali-oss put 接收 Buffer；Uint8Array 统一包成 Buffer（零拷贝视图）。
   const buf = Buffer.isBuffer(body) ? body : Buffer.from(body.buffer, body.byteOffset, body.byteLength);

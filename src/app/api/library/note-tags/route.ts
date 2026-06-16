@@ -7,6 +7,45 @@ import { corrections, notes, noteTags, tags } from '@/lib/db/schema';
 export const dynamic = 'force-dynamic';
 
 /**
+ * GET /api/library/note-tags?noteId=...  —— 读某记录的当前标签（V13 捕获后就地编辑用）
+ *
+ * 供「最近记录」就地标签编辑预加载当前标签，避免整体替换时误清空已有标签。
+ * 鉴权 getCurrentUser()，授权改应用层——显式按 user_id 过滤确认记录归属。
+ * 返回 { tags: string[] }。
+ */
+export async function GET(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: '未登录' }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const noteId = searchParams.get('noteId');
+  if (!noteId) {
+    return NextResponse.json({ error: '缺少 noteId' }, { status: 400 });
+  }
+
+  const db = getDb();
+  // 确认记录归属当前用户（他人记录视为不存在）。
+  const noteRows = await db
+    .select({ id: notes.id })
+    .from(notes)
+    .where(and(eq(notes.id, noteId), eq(notes.userId, user.id)))
+    .limit(1);
+  if (noteRows.length === 0) {
+    return NextResponse.json({ error: '记录不存在' }, { status: 404 });
+  }
+
+  const tagRows = await db
+    .select({ name: tags.name })
+    .from(noteTags)
+    .innerJoin(tags, eq(tags.id, noteTags.tagId))
+    .where(eq(noteTags.noteId, noteId));
+
+  return NextResponse.json({ tags: tagRows.map((r) => r.name).filter(Boolean) });
+}
+
+/**
  * POST /api/library/note-tags —— 用户修正记录标签
  * body: { noteId, tags: string[] }
  * 整体替换 note_tags 关联，差异写一条 corrections

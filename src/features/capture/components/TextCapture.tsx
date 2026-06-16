@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
 import { enqueue, isOfflineQueueSupported } from '@/features/offline/queue';
-import { Button, Textarea, Input, PlusIcon } from '@/components/ui';
+import { Button, Textarea, Input, Markdown, PlusIcon, cn } from '@/components/ui';
 
 export default function TextCapture({
   addOptimistic,
@@ -15,6 +15,8 @@ export default function TextCapture({
   const [content, setContent] = useState('');
   const [why, setWhy] = useState('');
   const [showWhy, setShowWhy] = useState(false);
+  // Markdown 预览切换（客户端）：编辑态显示输入框，预览态渲染 Markdown。
+  const [preview, setPreview] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   /** 发一次新建请求（首次提交与「重试」共用，重试会再上屏一条新乐观占位）。 */
@@ -63,6 +65,7 @@ export default function TextCapture({
     // 乐观 UI：立即清空，可连续记录
     setContent('');
     setWhy('');
+    setPreview(false);
     textareaRef.current?.focus();
     void submit(text, why.trim() || null);
   }
@@ -74,16 +77,60 @@ export default function TextCapture({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
-      <Textarea
-        ref={textareaRef}
-        autoFocus
-        rows={4}
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="记下此刻想留住的内容…（支持 Markdown）"
-        className="rounded-card p-4"
-      />
+      <div>
+        {/* 编辑 / 预览切换：预览态用既有 Markdown 组件渲染当前正文（纯客户端，不提交）。 */}
+        <div className="mb-1.5 flex items-center justify-end gap-1 rounded-field text-xs">
+          <div className="inline-flex rounded-pill bg-zinc-100/80 p-0.5 dark:bg-zinc-800/80">
+            <button
+              type="button"
+              onClick={() => setPreview(false)}
+              aria-pressed={!preview}
+              className={cn(
+                'rounded-pill px-2.5 py-1 font-medium transition focus-visible:outline-none',
+                !preview
+                  ? 'bg-white text-brand shadow-card dark:bg-zinc-900'
+                  : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400'
+              )}
+            >
+              编辑
+            </button>
+            <button
+              type="button"
+              onClick={() => setPreview(true)}
+              aria-pressed={preview}
+              className={cn(
+                'rounded-pill px-2.5 py-1 font-medium transition focus-visible:outline-none',
+                preview
+                  ? 'bg-white text-brand shadow-card dark:bg-zinc-900'
+                  : 'text-zinc-500 hover:text-zinc-700 dark:text-zinc-400'
+              )}
+            >
+              预览
+            </button>
+          </div>
+        </div>
+
+        {preview ? (
+          <div className="min-h-[7.5rem] rounded-card border border-zinc-200/80 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+            {content.trim() ? (
+              <Markdown content={content} />
+            ) : (
+              <p className="text-sm text-zinc-400">预览区为空——切回「编辑」写点什么。</p>
+            )}
+          </div>
+        ) : (
+          <Textarea
+            ref={textareaRef}
+            autoFocus
+            rows={4}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="记下此刻想留住的内容…（支持 Markdown）"
+            className="rounded-card p-4"
+          />
+        )}
+      </div>
 
       {showWhy ? (
         <Input

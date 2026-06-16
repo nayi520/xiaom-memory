@@ -16,6 +16,7 @@ import {
   tags as tagsTable,
 } from '@/lib/db/schema';
 import NoteAudio from '@/features/library/components/NoteAudio';
+import NoteImage from '@/features/library/components/NoteImage';
 import NoteTagEditor from '@/features/library/components/NoteTagEditor';
 import NoteDeleteButton from '@/features/capture/components/NoteDeleteButton';
 import {
@@ -122,6 +123,11 @@ export default async function NoteDetailPage({
           <span>{STATUS_LABELS[note.status] ?? note.status}</span>
         </p>
 
+        {/* 图片记录：先展示原图（签名 URL，懒加载防抖），OCR 文本作为正文随后渲染。 */}
+        {note.type === 'image' && note.media_path && (
+          <NoteImage mediaPath={note.media_path} alt={text || '图片记录'} className="mb-3" />
+        )}
+
         {text && <Markdown content={text} />}
 
         {note.url && (
@@ -136,7 +142,9 @@ export default async function NoteDetailPage({
           </a>
         )}
 
-        {note.media_path && <NoteAudio mediaPath={note.media_path} />}
+        {note.type === 'voice' && note.media_path && (
+          <NoteAudio mediaPath={note.media_path} />
+        )}
 
         {note.type === 'voice' && note.transcript && note.raw_content && (
           <details className="mt-3 border-t border-dashed border-zinc-200 pt-3 dark:border-zinc-700">
