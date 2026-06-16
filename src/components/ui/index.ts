@@ -19,6 +19,7 @@ export {
 } from './StatusView';
 export { default as Badge } from './Badge';
 export { default as Avatar, type AvatarProps } from './Avatar';
+export { default as SiteFooter, ICP_NO } from './SiteFooter';
 export { default as Markdown } from './Markdown';
 export { cn } from './cn';
 

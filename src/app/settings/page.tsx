@@ -14,6 +14,7 @@ import {
   ThemeToggle,
   TrashIcon,
   ChevronRight,
+  SiteFooter,
   cardClass,
   cn,
 } from '@/components/ui';
@@ -112,6 +113,8 @@ export default function SettingsPage() {
       <p className="mt-12 text-center text-xs text-zinc-300 dark:text-zinc-700">
         小M · 你负责遇见，小M 替你记得
       </p>
+      {/* ICP 备案号：设置页底部一行小字（移动端可达，不破坏底部 Tab）。 */}
+      <SiteFooter variant="compact" className="mt-2" />
     </PageShell>
   );
 }

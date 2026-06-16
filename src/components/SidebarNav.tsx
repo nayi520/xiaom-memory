@@ -23,6 +23,7 @@ import {
   MoonIcon,
   SystemIcon,
   SearchIcon,
+  SiteFooter,
   cn,
 } from '@/components/ui';
 import type { LucideIcon, Theme } from '@/components/ui';
@@ -98,10 +99,12 @@ export default function SidebarNav() {
         </ul>
       </div>
 
-      {/* 底部：外观 + 账户 */}
+      {/* 底部：外观 + 账户 + 备案号（不打扰） */}
       <div className="border-t border-zinc-200/70 px-3 py-3 dark:border-zinc-800/70">
         <ThemeSwitch />
         <AccountRow />
+        {/* ICP 备案号：App 内不打扰位，仅一行小字。 */}
+        <SiteFooter variant="compact" className="mt-2 px-2" />
       </div>
     </nav>
   );

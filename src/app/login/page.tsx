@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn as credentialsSignIn } from 'next-auth/react';
 import { emailSignIn, appleSignIn } from './actions';
-import { Button, Input, MailIcon } from '@/components/ui';
+import { Button, Input, MailIcon, SiteFooter } from '@/components/ui';
 
 export default function LoginPage() {
   // useSearchParams 需包在 Suspense 内，否则静态导出时触发 CSR bailout 报错。
@@ -560,6 +560,9 @@ function LoginForm() {
         <p className="mt-10 text-center text-xs text-zinc-400 dark:text-zinc-600">
           继续即表示同意 <LegalLinks />
         </p>
+
+        {/* 合规页脚：版权 + 法务互链 + ICP 备案号（公网入口必须展示）。 */}
+        <SiteFooter className="mt-6" />
       </div>
     </main>
   );

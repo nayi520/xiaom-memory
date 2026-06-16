@@ -6,6 +6,7 @@
  */
 
 import Link from 'next/link';
+import SiteFooter from '@/components/ui/SiteFooter';
 
 export interface LegalSection {
   heading: string;
@@ -50,9 +51,9 @@ export default function LegalShell({
           {title}
         </h1>
         <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{updated}</p>
-        {/* 占位内容提示：上线前必须由法务复核替换。 */}
+        {/* 合规提示：本文为通用模板，正式对外运营前须经法务复核。 */}
         <p className="mt-4 rounded-field border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
-          本文档为产品占位文本，仅用于演示与开发，<strong>需法务复核</strong>后方可作为正式条款对外生效。
+          本文为通用模板，<strong>正式对外运营前请经法务复核</strong>。当前小M 仅在小范围内私密使用。
         </p>
       </header>
 
@@ -68,9 +69,13 @@ export default function LegalShell({
         ))}
       </article>
 
-      <footer className="mt-12 border-t border-zinc-200 pt-6 text-xs text-zinc-400 dark:border-zinc-800 dark:text-zinc-600">
-        如对本文档有疑问，请通过应用内反馈或邮件联系我们。
-      </footer>
+      <div className="mt-12 space-y-5 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+        <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          如对本文档有疑问，请通过应用内反馈或邮件联系我们。
+        </p>
+        {/* 合规页脚：版权 + 法务互链 + ICP 备案号。 */}
+        <SiteFooter />
+      </div>
     </main>
   );
 }
