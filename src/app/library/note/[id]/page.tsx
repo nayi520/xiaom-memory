@@ -96,7 +96,7 @@ export default async function NoteDetailPage({
   const text = note.raw_content || note.transcript || '';
 
   return (
-    <PageShell>
+    <PageShell width="reading">
       <nav className="mb-4 flex items-center gap-1.5 text-sm text-zinc-400">
         <Link
           href="/library"

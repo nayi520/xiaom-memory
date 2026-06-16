@@ -277,7 +277,7 @@ export default function ReviewSession({
     })();
 
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:max-w-2xl lg:px-10 lg:pb-12 lg:pt-12">
+      <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
         <Header />
         <div className="flex flex-1 flex-col gap-4">
           <section className="animate-fade-in-up rounded-card border border-zinc-200/80 bg-white p-7 text-center shadow-card dark:border-zinc-800 dark:bg-zinc-900">
@@ -416,7 +416,7 @@ export default function ReviewSession({
   const progressPct = Math.round((idx / items.length) * 100);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
       <Header progress={`${idx + 1} / ${items.length}`} combo={combo} />
 
       {/* 进度条 */}

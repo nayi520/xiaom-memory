@@ -11,7 +11,7 @@ export const metadata = { title: '问答 · 小M' };
 
 export default function AskPage() {
   return (
-    <PageShell>
+    <PageShell width="reading">
       <header className="mb-5 lg:mb-7">
         <h1 className="text-2xl font-bold tracking-tight text-zinc-900 lg:text-3xl dark:text-zinc-50">
           问知识库

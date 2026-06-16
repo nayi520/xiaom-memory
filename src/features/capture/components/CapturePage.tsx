@@ -139,8 +139,9 @@ export default function CapturePage() {
         </div>
       </header>
 
-      {/* 桌面双栏：左侧捕获区 / 右侧概览（待复习 + 知识概览 + 最近捕获）；移动端单列堆叠，捕获在最上。 */}
-      <div className="flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-8">
+      {/* 桌面双栏：左侧捕获区 / 右侧概览（待复习 + 知识概览 + 最近捕获）；移动端单列堆叠，捕获在最上。
+          大屏右栏随宽度略增、间距加大，避免左侧录入栏过宽空荡、两栏比例失衡。 */}
+      <div className="flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-10 2xl:grid-cols-[minmax(0,1fr)_26rem]">
         <div>
           {/* 记录类型分段切换（底部 tab 栏让位给全局导航） */}
           <div

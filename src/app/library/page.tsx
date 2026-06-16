@@ -386,7 +386,8 @@ function Shell({
       </form>
 
       {railed ? (
-        <div className="flex-1 lg:grid lg:grid-cols-[17rem_minmax(0,1fr)] lg:items-start lg:gap-8">
+        // 主从双栏：左侧领域导航固定档（大屏略增），右侧内容自适应；大屏加大栏间距。
+        <div className="flex-1 lg:grid lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-start lg:gap-8 xl:grid-cols-[18rem_minmax(0,1fr)] xl:gap-10">
           <DomainRail domains={domains} active={activeDomain} />
           <div className="min-w-0">{children}</div>
         </div>

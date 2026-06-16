@@ -134,7 +134,7 @@ export default function ChangePasswordCard() {
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="••••••••"
                 disabled={saving || loading}
-                className="py-2.5 text-sm"
+                className="py-2.5 text-sm lg:max-w-md"
               />
             </div>
           )}
@@ -155,7 +155,7 @@ export default function ChangePasswordCard() {
               onChange={(e) => setNewPassword(e.target.value)}
               placeholder={`至少 ${MIN_PASSWORD_LENGTH} 位`}
               disabled={saving || loading}
-              className="py-2.5 text-sm"
+              className="py-2.5 text-sm lg:max-w-md"
             />
           </div>
 
@@ -175,7 +175,7 @@ export default function ChangePasswordCard() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="再次输入新密码"
               disabled={saving || loading}
-              className="py-2.5 text-sm"
+              className="py-2.5 text-sm lg:max-w-md"
             />
           </div>
 

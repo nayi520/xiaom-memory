@@ -148,7 +148,7 @@ export default async function ConceptDetailPage({
   }
 
   return (
-    <PageShell>
+    <PageShell width="reading">
       {/* 面包屑 */}
       <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-sm text-zinc-400">
         <Link

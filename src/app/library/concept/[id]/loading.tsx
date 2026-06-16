@@ -6,7 +6,7 @@ import { PageShell, Skeleton, SkeletonText, SkeletonCard } from '@/components/ui
 
 export default function ConceptDetailLoading() {
   return (
-    <PageShell>
+    <PageShell width="reading">
       <div role="status" aria-busy aria-label="正在加载概念" className="animate-fade-in">
         <Skeleton className="mb-4 h-4 w-32" />
         <Skeleton className="h-7 w-1/2" />

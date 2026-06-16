@@ -55,8 +55,8 @@ export default function SettingsPage() {
         <ReviewHeatmap />
       </section>
 
-      {/* 其余设置项：桌面双栏铺开，移动端单列堆叠 */}
-      <div className="mt-9 grid gap-9 lg:grid-cols-2 lg:gap-x-10 lg:gap-y-10">
+      {/* 其余设置项：桌面双栏铺开、超宽屏三栏，移动端单列堆叠（避免大屏下卡片过宽空荡） */}
+      <div className="mt-9 grid gap-9 lg:grid-cols-2 lg:gap-x-10 lg:gap-y-10 2xl:grid-cols-3">
         <section className="space-y-2.5">
           <SectionTitle className="mb-1">外观</SectionTitle>
           <ThemeToggle />

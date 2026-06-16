@@ -7,7 +7,7 @@ import { PageShell, Skeleton, SkeletonText } from '@/components/ui';
 
 export default function ReviewLoading() {
   return (
-    <PageShell>
+    <PageShell width="reading">
       <div role="status" aria-busy aria-label="正在加载复习" className="animate-fade-in">
         {/* 进度条 + 计数 */}
         <div className="mb-6 space-y-2">

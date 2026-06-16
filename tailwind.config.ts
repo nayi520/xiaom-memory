@@ -38,8 +38,19 @@ const config: Config = {
         focus: '0 0 0 3px rgb(var(--brand-600) / 0.18)',
       },
       maxWidth: {
-        content: '40rem', // 640px，主内容阅读宽度（移动 + 桌面共用，单列阅读最舒适）
-        shell: '72rem', // 1152px，宽屏外壳（侧栏 + 内容）
+        // ——「内容最大宽度」统一刻度（跨页一致、有意图，避免每页各拍一个数）——
+        // 与 PageShell 的三档（content / wide / full）配套，外加单列阅读专用 reading。
+        // 大屏（≥1536 2xl）逐级放大后封顶并居中（mx-auto），两侧留白对称、不边到边拉伸。
+        content: '40rem', // 640px，移动 + 桌面单列基准（向后兼容旧引用）
+        reading: '46rem', // 736px，单列长文/对话最舒适阅读宽度（问答 / 复习 / 概念&记录详情）
+        // 注：纯正文行长沿用 Tailwind 内置 max-w-prose（65ch，按字数控制），此处不覆盖以免影响既有用法。
+        'content-lg': '50rem', // 800px，content 档在桌面（lg+）的稳定宽度
+        'content-2xl': '54rem', // 864px，content 档在超宽屏（2xl）的封顶宽度
+        'wide-lg': '64rem', // 1024px，wide 档在桌面（lg+）
+        'wide-xl': '72rem', // 1152px，wide 档在大屏（xl）
+        'wide-2xl': '80rem', // 1280px，wide 档在超宽屏（2xl）封顶
+        shell: '72rem', // 1152px，宽屏外壳（侧栏 + 内容，向后兼容）
+        'app-2xl': '100rem', // 1600px，自管布局页（知识库 full 档）在超宽屏的整体封顶，居中留白
       },
       transitionTimingFunction: {
         smooth: 'cubic-bezier(0.4, 0, 0.2, 1)',
