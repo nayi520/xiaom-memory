@@ -10,7 +10,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, TrashIcon, useToast } from '@/components/ui';
+import { Button, TrashIcon, useToast, cn } from '@/components/ui';
+import { useCoarsePointer } from '@/components/useCoarsePointer';
 import { apiFetch } from '@/lib/api';
 
 export default function NoteDeleteButton({
@@ -28,6 +29,8 @@ export default function NoteDeleteButton({
 }) {
   const router = useRouter();
   const { success, error: toastError } = useToast();
+  // 触摸屏：删除触发按钮常驻显示并加大命中区（无 hover 可依赖）。自动检测，无需上层传参。
+  const coarse = useCoarsePointer();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -66,12 +69,15 @@ export default function NoteDeleteButton({
         onClick={() => setConfirming(true)}
         className={
           className ??
-          'shrink-0 rounded-md p-1.5 text-zinc-300 opacity-60 transition hover:bg-red-50 hover:text-red-500 hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-red-950'
+          cn(
+            'flex shrink-0 items-center justify-center rounded-md text-zinc-300 transition hover:bg-red-50 hover:text-red-500 hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-100 dark:text-zinc-600 dark:hover:bg-red-950',
+            coarse ? 'touch-target opacity-100 text-zinc-400' : 'p-1.5 opacity-60'
+          )
         }
         aria-label="删除这条记录"
         title={label}
       >
-        <TrashIcon aria-hidden className="h-4 w-4" />
+        <TrashIcon aria-hidden className="h-[18px] w-[18px]" />
       </button>
     );
   }

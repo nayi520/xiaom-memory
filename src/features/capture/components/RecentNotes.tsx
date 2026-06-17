@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { RecentItem } from '../types';
+import { useCoarsePointer } from '@/components/useCoarsePointer';
 import NoteDeleteButton from './NoteDeleteButton';
 import RecentNoteEditor from './RecentNoteEditor';
 import NoteImage from '@/features/library/components/NoteImage';
@@ -55,6 +56,8 @@ export default function RecentNotes({
 }) {
   // 当前处于就地编辑态的记录 id（同一时刻只编辑一条）。
   const [editingId, setEditingId] = useState<string | null>(null);
+  // 触摸屏：编辑/删除按钮无 hover 可触发，故常驻显示且加大命中区（桌面保持 hover 浮现）。
+  const coarse = useCoarsePointer();
 
   if (items.length === 0 && !keepWhenEmpty) return null;
 
@@ -160,7 +163,8 @@ export default function RecentNotes({
                   )}
                 </div>
               </div>
-              {/* 已落库的记录：就地编辑 + 删除（乐观占位 / 保存中不显示） */}
+              {/* 已落库的记录：就地编辑 + 删除（乐观占位 / 保存中不显示）。
+                  触摸屏常驻显示并加大命中区；桌面保持 hover 浮现、紧凑。 */}
               {isPersisted(item) && (
                 <div className="flex shrink-0 items-center gap-0.5">
                   {onEdited && (
@@ -169,9 +173,12 @@ export default function RecentNotes({
                       onClick={() => setEditingId(item.id)}
                       aria-label="编辑"
                       title="编辑"
-                      className="rounded-md p-1.5 text-zinc-400 opacity-0 transition hover:bg-zinc-100 hover:text-brand focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-zinc-800"
+                      className={cn(
+                        'flex items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-brand focus-visible:opacity-100 group-hover:opacity-100 dark:hover:bg-zinc-800',
+                        coarse ? 'touch-target opacity-100' : 'p-1.5 opacity-0'
+                      )}
                     >
-                      <EditIcon aria-hidden className="h-4 w-4" />
+                      <EditIcon aria-hidden className="h-[18px] w-[18px]" />
                     </button>
                   )}
                   <NoteDeleteButton

@@ -27,6 +27,7 @@ import {
   SkeletonCard,
   NoteTypeIcon,
   ChevronRight,
+  PullToRefresh,
   cn,
 } from '@/components/ui';
 import { apiFetch } from '@/lib/api';
@@ -112,6 +113,19 @@ export default function TimelineFeed() {
 
   useEffect(() => loadFirst(), [loadFirst]);
 
+  /** 下拉刷新（移动端）：重拉首页替换列表，不切回整页骨架（保留已渲染内容更平滑）。 */
+  const refresh = useCallback(async () => {
+    try {
+      const data = await load(null);
+      setNotes(data.notes);
+      setCursor(data.nextCursor);
+      setPhase('ready');
+      setError(null);
+    } catch {
+      /* 刷新失败：保留现有列表，不打断（下次手动重试） */
+    }
+  }, [load]);
+
   async function loadMore() {
     if (!cursor || phase === 'loadingMore') return;
     setPhase('loadingMore');
@@ -168,17 +182,20 @@ export default function TimelineFeed() {
 
   return (
     <>
-      {virtualize ? (
-        <VirtualizedList notes={notes} />
-      ) : (
-        <ul className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
-          {notes.map((note) => (
-            <li key={note.id}>
-              <TimelineCard note={note} />
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* 移动端下拉刷新（桌面无监听、无指示器，不受影响）。 */}
+      <PullToRefresh onRefresh={refresh}>
+        {virtualize ? (
+          <VirtualizedList notes={notes} />
+        ) : (
+          <ul className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
+            {notes.map((note) => (
+              <li key={note.id}>
+                <TimelineCard note={note} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </PullToRefresh>
 
       {error && phase === 'error' && (
         <p className="mt-3 text-center text-sm text-red-500">{error}</p>

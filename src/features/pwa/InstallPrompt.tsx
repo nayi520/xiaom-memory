@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { Share, Plus, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button, CloseIcon, cn } from '@/components/ui';
 
 const DISMISS_KEY = 'mxiao.pwa.install.dismissed.v1';
@@ -60,6 +61,8 @@ export default function InstallPrompt() {
   const [visible, setVisible] = useState(false);
   // iOS 文案提示（无 beforeinstallprompt 时的兜底）。
   const [iosHint, setIosHint] = useState(false);
+  // iOS 分步图示展开态（默认折叠成一句话，点「查看步骤」展开）。
+  const [iosExpanded, setIosExpanded] = useState(false);
 
   useEffect(() => {
     if (isStandalone() || recentlyDismissed()) return;
@@ -147,21 +150,38 @@ export default function InstallPrompt() {
             把小M添加到主屏
           </p>
           {iosHint ? (
-            <p className="mt-0.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
-              点击底部「分享」<span aria-hidden>􀈂</span>，选择「添加到主屏幕」，
-              即可像 App 一样全屏使用、接收复习提醒。
-            </p>
+            <>
+              <p className="mt-0.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+                像 App 一样全屏使用、秒开、接收复习提醒。
+              </p>
+              {/* 折叠的分步图示：默认收起，点开看「分享 → 添加到主屏幕」两步带图标。 */}
+              <button
+                type="button"
+                onClick={() => setIosExpanded((v) => !v)}
+                aria-expanded={iosExpanded}
+                className="mt-1.5 inline-flex items-center gap-0.5 rounded-md text-xs font-medium text-brand underline-offset-2 transition hover:underline focus-visible:outline-none"
+              >
+                {iosExpanded ? '收起步骤' : '查看添加步骤'}
+                {iosExpanded ? (
+                  <ChevronUp aria-hidden className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown aria-hidden className="h-3.5 w-3.5" />
+                )}
+              </button>
+              {iosExpanded && <IosSteps />}
+            </>
           ) : (
             <p className="mt-0.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
               全屏使用、秒开、可离线记录、接收复习提醒。
             </p>
           )}
           {!iosHint && (
-            <div className="mt-2.5 flex items-center gap-2">
-              <Button size="sm" onClick={install}>
+            <div className="mt-3 flex items-center gap-2">
+              {/* 触控友好：md 尺寸（≥44px 高），主次操作并排。 */}
+              <Button size="md" onClick={install}>
                 添加到主屏
               </Button>
-              <Button size="sm" variant="ghost" onClick={dismiss}>
+              <Button size="md" variant="ghost" onClick={dismiss}>
                 以后再说
               </Button>
             </div>
@@ -171,11 +191,55 @@ export default function InstallPrompt() {
           type="button"
           onClick={dismiss}
           aria-label="关闭"
-          className="-mr-1 -mt-0.5 shrink-0 rounded-md p-1 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
+          className="touch-target -mr-2 -mt-2 flex shrink-0 items-center justify-center rounded-md text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800 dark:hover:text-zinc-300"
         >
-          <CloseIcon aria-hidden className="h-3.5 w-3.5" />
+          <CloseIcon aria-hidden className="h-4 w-4" />
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * iOS Safari「添加到主屏幕」分步图示。
+ * 用真实对应的图标（分享、加号）+ 序号，贴近用户在 Safari 工具栏 / 分享菜单看到的样子，
+ * 比纯文案更易跟做。仅在 iOS 兜底提示展开时渲染。
+ */
+function IosSteps() {
+  const steps: { n: number; icon: React.ReactNode; text: React.ReactNode }[] = [
+    {
+      n: 1,
+      icon: <Share aria-hidden className="h-4 w-4" />,
+      text: (
+        <>
+          点底部工具栏的「分享」<span className="font-medium text-zinc-700 dark:text-zinc-200">􀈂</span>
+        </>
+      ),
+    },
+    {
+      n: 2,
+      icon: <Plus aria-hidden className="h-4 w-4" />,
+      text: (
+        <>
+          在菜单里选「
+          <span className="font-medium text-zinc-700 dark:text-zinc-200">添加到主屏幕</span>」
+        </>
+      ),
+    },
+  ];
+  return (
+    <ol className="motion-safe:animate-fade-in mt-2.5 space-y-2 border-t border-zinc-200/70 pt-2.5 dark:border-zinc-700/70">
+      {steps.map((s) => (
+        <li key={s.n} className="flex items-center gap-2.5 text-xs text-zinc-500 dark:text-zinc-400">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-bold text-brand">
+            {s.n}
+          </span>
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-white text-brand dark:border-zinc-700 dark:bg-zinc-900">
+            {s.icon}
+          </span>
+          <span className="min-w-0 leading-relaxed">{s.text}</span>
+        </li>
+      ))}
+    </ol>
   );
 }

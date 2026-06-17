@@ -19,6 +19,10 @@ export {
 } from './StatusView';
 export { default as Badge } from './Badge';
 export { default as Avatar, type AvatarProps } from './Avatar';
+// 移动端交互原语（V19）：底部 sheet / 滑动操作行 / 下拉刷新（均仅移动端生效）
+export { default as BottomSheet, SheetAction, type BottomSheetProps } from './BottomSheet';
+export { default as SwipeableRow, type SwipeAction } from './SwipeableRow';
+export { default as PullToRefresh } from './PullToRefresh';
 export { default as SiteFooter, ICP_NO } from './SiteFooter';
 export { default as Markdown } from './Markdown';
 export { cn } from './cn';

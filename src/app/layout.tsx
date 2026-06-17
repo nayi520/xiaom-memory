@@ -27,7 +27,15 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#4F46E5',
+  // viewport-fit=cover：让内容延伸到刘海/底部 home 条区域，配合 globals.css 的 env(safe-area-inset-*)
+  // 适配——standalone PWA 沉浸感更强（顶/底栏自行用 safe-area 留白，正文不被遮挡）。
+  viewportFit: 'cover',
+  // 状态栏/地址栏主题色随深浅色切换：浅色用品牌靛蓝，深色用近黑（与 body dark 背景一致），
+  // 避免深色模式下顶部仍是亮色块。两端浏览器（含 standalone）均按媒体查询选用对应色。
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#4F46E5' },
+    { media: '(prefers-color-scheme: dark)', color: '#09090b' },
+  ],
 };
 
 export default function RootLayout({

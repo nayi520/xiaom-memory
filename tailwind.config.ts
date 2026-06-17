@@ -75,12 +75,18 @@ const config: Config = {
           from: { opacity: '0', transform: 'translateY(8px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
+        // 移动端底部 sheet 滑入（V19）：从屏幕底部上移到位。
+        'sheet-up': {
+          from: { transform: 'translateY(100%)' },
+          to: { transform: 'translateY(0)' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.25s var(--ease-smooth, ease) both',
         'fade-in-up': 'fade-in-up 0.3s var(--ease-smooth, ease) both',
         'scale-in': 'scale-in 0.18s var(--ease-smooth, ease) both',
         'flip-in': 'flip-in 0.22s var(--ease-smooth, ease) both',
+        'sheet-up': 'sheet-up 0.28s var(--ease-smooth, ease) both',
       },
     },
   },

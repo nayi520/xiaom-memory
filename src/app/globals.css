@@ -109,6 +109,53 @@ body {
   }
 }
 
+@layer utilities {
+  /*
+   * —— 移动端安全区 / 触控辅助工具类（V19） ——
+   * 仅由移动专用分支显式 opt-in；桌面端不会引用这些类，故桌面渲染不受影响。
+   */
+
+  /* 顶部安全区留白（standalone PWA 下避开刘海/状态栏）。 */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  /* 底部安全区留白（避开 home 条）。 */
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  /* 顶部安全区外边距（用于 sticky 顶栏整体下移到安全区内）。 */
+  .mt-safe {
+    margin-top: env(safe-area-inset-top);
+  }
+
+  /*
+   * 触控操作友好的最小命中区（≥44×44，Apple HIG / WCAG 2.5.5 建议）。
+   * 用于移动端图标按钮等本来偏小的可点元素；视觉尺寸不变，仅扩大可点范围。
+   */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /*
+   * 惯性滚动 + 链式滚动隔离：用于底部 sheet / 可独立滚动的内部容器，
+   * 滚到边界时不把滚动「漏」给页面（避免误触发下拉刷新/橡皮筋）。
+   */
+  .scroll-touch {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* 隐藏滚动条但保留可滚动（移动端横向 chips/tab 行更干净）。 */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer components {
   /* 骨架屏：柔和脉冲 + 流光 */
   .skeleton {

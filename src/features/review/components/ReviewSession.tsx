@@ -16,7 +16,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RATING_LABELS, type FsrsStateJson, type ReviewRating } from '../fsrs';
 import type { ReviewMode, ReviewQueueItem } from '../types';
 import { clozeFront, clozeFull, hasCloze } from '../cloze';
@@ -52,6 +52,7 @@ import {
   cn,
 } from '@/components/ui';
 import type { LucideIcon } from '@/components/ui';
+import { useCoarsePointer } from '@/components/useCoarsePointer';
 import { apiFetch } from '@/lib/api';
 
 /** 复习模式的展示标签与图标（模式切换 UI 用）。 */
@@ -154,6 +155,14 @@ export default function ReviewSession({
   const [savingEdit, setSavingEdit] = useState(false);
   const [suspending, setSuspending] = useState(false);
 
+  // 移动端滑动评分（V19）：翻面后左滑=忘了(1) / 右滑=记得(3)，是四档按钮的快捷补充。
+  // 仅触摸屏启用；跟手位移做视觉反馈，松手超阈值则评分。
+  const coarse = useCoarsePointer();
+  const [swipeDX, setSwipeDX] = useState(0);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const swipeAxis = useRef<'undecided' | 'horizontal' | 'vertical'>('undecided');
+  const SWIPE_THRESHOLD = 96;
+
   const baseCurrent = items[idx];
   // 当前卡（叠加就地编辑覆盖）。
   const current = useMemo(() => {
@@ -190,6 +199,9 @@ export default function ReviewSession({
   const advance = useCallback(() => {
     setFlipped(false);
     setShowSource(false);
+    setSwipeDX(0);
+    swipeStart.current = null;
+    swipeAxis.current = 'undecided';
     closeEdit();
     setIdx((i) => {
       const next = i + 1;
@@ -413,7 +425,7 @@ export default function ReviewSession({
     })();
 
     return (
-      <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
+      <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-[max(1.5rem,calc(env(safe-area-inset-top)+0.5rem))] sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
         <Header />
         {/* 模式 / 领域切换（V14）：完成 / 空态也能切换模式开练 */}
         <ModeSwitcher
@@ -560,7 +572,7 @@ export default function ReviewSession({
   const progressPct = Math.round((idx / items.length) * 100);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
+    <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-[max(1.5rem,calc(env(safe-area-inset-top)+0.5rem))] sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
       <Header progress={`${idx + 1} / ${items.length}`} combo={combo} />
 
       {/* 模式 / 领域切换 + 朗读开关（V14） */}
@@ -604,13 +616,77 @@ export default function ReviewSession({
               setFlipped(true);
             }
           }}
+          // 移动端滑动评分（仅触摸屏 + 翻面后）：跟手判定水平滑动，松手按方向评分。
+          onTouchStart={
+            coarse && flipped && !editing
+              ? (e) => {
+                  swipeStart.current = {
+                    x: e.touches[0]?.clientX ?? 0,
+                    y: e.touches[0]?.clientY ?? 0,
+                  };
+                  swipeAxis.current = 'undecided';
+                }
+              : undefined
+          }
+          onTouchMove={
+            coarse && flipped && !editing
+              ? (e) => {
+                  if (!swipeStart.current) return;
+                  const dx = (e.touches[0]?.clientX ?? 0) - swipeStart.current.x;
+                  const dy = (e.touches[0]?.clientY ?? 0) - swipeStart.current.y;
+                  if (swipeAxis.current === 'undecided') {
+                    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+                    swipeAxis.current = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+                  }
+                  if (swipeAxis.current !== 'horizontal') return;
+                  if (e.cancelable) e.preventDefault();
+                  setSwipeDX(dx);
+                }
+              : undefined
+          }
+          onTouchEnd={
+            coarse && flipped && !editing
+              ? () => {
+                  const dx = swipeDX;
+                  swipeStart.current = null;
+                  if (swipeAxis.current === 'horizontal' && Math.abs(dx) >= SWIPE_THRESHOLD) {
+                    // 左滑→忘了(1)，右滑→记得(3)。rate 内部会推进并清零位移。
+                    rate(dx < 0 ? 1 : 3);
+                  } else {
+                    setSwipeDX(0);
+                  }
+                  swipeAxis.current = 'undecided';
+                }
+              : undefined
+          }
+          style={
+            swipeDX
+              ? { transform: `translateX(${swipeDX * 0.5}px) rotate(${swipeDX * 0.02}deg)` }
+              : undefined
+          }
           className={cn(
-            'flex min-h-[40dvh] flex-col rounded-card border border-zinc-200/80 bg-white p-6 shadow-card transition duration-200 dark:border-zinc-800 dark:bg-zinc-900',
+            'relative flex min-h-[40dvh] flex-col rounded-card border border-zinc-200/80 bg-white p-6 shadow-card transition duration-200 dark:border-zinc-800 dark:bg-zinc-900',
+            swipeDX === 0 && 'motion-reduce:transition-none',
             !flipped && !editing
               ? 'cursor-pointer hover:border-zinc-300 hover:shadow-card-hover dark:hover:border-zinc-700'
               : ''
           )}
         >
+          {/* 滑动评分方向提示（仅移动端、翻面、正在水平滑动时显示） */}
+          {coarse && flipped && !editing && Math.abs(swipeDX) > 24 && (
+            <span
+              aria-hidden
+              className={cn(
+                'pointer-events-none absolute top-4 z-10 rounded-pill border px-3 py-1 text-xs font-bold shadow-sm',
+                swipeDX < 0
+                  ? 'left-4 border-red-200 bg-red-50 text-red-600 dark:border-red-900 dark:bg-red-950 dark:text-red-400'
+                  : 'right-4 border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400'
+              )}
+              style={{ opacity: Math.min(1, Math.abs(swipeDX) / SWIPE_THRESHOLD) }}
+            >
+              {swipeDX < 0 ? RATING_LABELS[1] : RATING_LABELS[3]}
+            </span>
+          )}
           {editing ? (
             /* —— 编辑态：改 Q/A —— */
             <div className="flex flex-1 flex-col gap-3">
@@ -772,13 +848,14 @@ export default function ReviewSession({
 
         {/* 评分区（编辑态隐藏） */}
         {!editing && (flipped ? (
+          <>
           <div className="animate-fade-in-up mt-4 grid grid-cols-4 gap-2">
             {([1, 2, 3, 4] as ReviewRating[]).map((r) => (
               <button
                 key={r}
                 onClick={() => rate(r)}
                 className={cn(
-                  'rounded-field border py-3 text-sm font-semibold transition duration-150 ease-smooth active:scale-95',
+                  'flex min-h-[3.25rem] flex-col items-center justify-center rounded-field border py-3 text-sm font-semibold transition duration-150 ease-smooth active:scale-95',
                   RATING_STYLES[r]
                 )}
               >
@@ -787,6 +864,13 @@ export default function ReviewSession({
               </button>
             ))}
           </div>
+          {/* 移动端滑动评分提示（仅触摸屏显示一次性提示语） */}
+          {coarse && (
+            <p className="mt-2 text-center text-[11px] text-zinc-400">
+              提示：左滑「{RATING_LABELS[1]}」、右滑「{RATING_LABELS[3]}」也能快速评分
+            </p>
+          )}
+          </>
         ) : (
           <Button size="lg" fullWidth className="mt-4" onClick={() => setFlipped(true)}>
             翻面看答案

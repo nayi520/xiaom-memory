@@ -38,7 +38,9 @@ export default function PageShell({
     <main
       className={cn(
         // 移动：单列居中 + 底栏让位；桌面：更大内边距、顶部留白，去掉底栏让位空白；2xl 再加呼吸感。
-        'mx-auto flex min-h-dvh w-full flex-col px-4 pb-28 pt-6 sm:px-6 sm:pt-10 lg:px-10 lg:pb-12 lg:pt-12 xl:px-14 2xl:px-16',
+        // 顶部内边距在移动端叠加安全区（standalone PWA 刘海/状态栏让位）——
+        // env(safe-area-inset-top) 在桌面/非刘海设备为 0，故退化为原 1.5rem，桌面渲染不变。
+        'mx-auto flex min-h-dvh w-full flex-col px-4 pb-28 pt-[max(1.5rem,calc(env(safe-area-inset-top)+0.5rem))] sm:px-6 sm:pt-10 lg:px-10 lg:pb-12 lg:pt-12 xl:px-14 2xl:px-16',
         WIDTHS[width],
         className
       )}

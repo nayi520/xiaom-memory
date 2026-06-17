@@ -178,9 +178,12 @@ export default function LinkCapture({
         placeholder="为什么觉得重要？（一句话，可不填）"
         className="px-4 py-2.5 text-sm"
       />
-      <Button type="submit" size="lg" fullWidth disabled={!url.trim()}>
-        剪藏链接
-      </Button>
+      {/* 移动端 sticky 吸附在底栏上方，键盘弹起 / 滚动时仍可达；桌面端常规流式。 */}
+      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] z-10 -mx-4 bg-gradient-to-t from-zinc-50 via-zinc-50/95 to-transparent px-4 pt-2 pb-1 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-none lg:p-0 dark:from-zinc-950 dark:via-zinc-950/95">
+        <Button type="submit" size="lg" fullWidth disabled={!url.trim()}>
+          剪藏链接
+        </Button>
+      </div>
     </form>
   );
 }

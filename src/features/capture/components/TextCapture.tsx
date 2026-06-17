@@ -163,9 +163,16 @@ export default function TextCapture({
         </button>
       )}
 
-      <Button type="submit" size="lg" fullWidth disabled={!content.trim()}>
-        记下 <kbd className="ml-1 rounded bg-white/20 px-1.5 py-0.5 text-xs font-normal">⌘↵</kbd>
-      </Button>
+      {/* 提交按钮：移动端 sticky 吸附在底栏上方，长正文滚动时仍随手可达；桌面端保持常规流式布局。
+          底部安全区 + 底栏高度（约 4rem）让位，避免被全局底栏遮挡。 */}
+      <div className="sticky bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] z-10 -mx-4 bg-gradient-to-t from-zinc-50 via-zinc-50/95 to-transparent px-4 pt-2 pb-1 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-none lg:p-0 dark:from-zinc-950 dark:via-zinc-950/95">
+        <Button type="submit" size="lg" fullWidth disabled={!content.trim()}>
+          记下{' '}
+          <kbd className="ml-1 hidden rounded bg-white/20 px-1.5 py-0.5 text-xs font-normal sm:inline">
+            ⌘↵
+          </kbd>
+        </Button>
+      </div>
     </form>
   );
 }

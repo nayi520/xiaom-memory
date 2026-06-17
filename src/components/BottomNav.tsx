@@ -44,7 +44,8 @@ export default function BottomNav() {
               // data-tour：供 V12 产品导览定位高亮（移动端底栏入口），仅作锚点。
               data-tour={`nav-${href === '/' ? 'home' : href.replace(/^\//, '')}`}
               className={cn(
-                'group relative flex flex-1 flex-col items-center gap-1 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] text-[11px] font-medium transition-colors duration-150',
+                // min-h 保证可点区域 ≥44px（含图标 + 文案 + 上下内边距）；底部用 safe-area 让位 home 条。
+                'group relative flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-1 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-[11px] font-medium transition-colors duration-150',
                 active
                   ? 'text-brand'
                   : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'
