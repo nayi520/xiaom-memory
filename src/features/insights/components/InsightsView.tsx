@@ -29,6 +29,7 @@ import GrowthChart, { type GrowthSeries } from './GrowthChart';
 import DomainBars, { type DomainCount } from './DomainBars';
 import AchievementGrid, { type Achievement } from './AchievementGrid';
 import CheckupReport from './CheckupReport';
+import { apiFetch } from '@/lib/api';
 
 interface Insights {
   days: number;
@@ -50,7 +51,7 @@ export default function InsightsView() {
   useEffect(() => {
     let cancelled = false;
     setError(false);
-    fetch(`/api/insights?days=${days}`)
+    apiFetch(`/api/insights?days=${days}`)
       .then(async (res) => {
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error('insights');

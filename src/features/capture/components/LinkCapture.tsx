@@ -5,6 +5,7 @@ import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
 import { enqueue, isOfflineQueueSupported } from '@/features/offline/queue';
 import { Button, Input, SpinnerIcon, LinkIcon, cn } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 /** 规范化用户输入为可抓取 URL（缺协议补 https://）。 */
 function normalizeUrl(raw: string): string {
@@ -46,7 +47,12 @@ export default function LinkCapture({
     setTitleLoading(true);
     let cancelled = false;
     const timer = setTimeout(() => {
-      fetch(`/api/links/meta?url=${encodeURIComponent(normalizeUrl(trimmed))}`)
+      // 标题预览：best-effort，401 不弹重登浮层、失败不重试（输入仍可提交）。
+      apiFetch(`/api/links/meta?url=${encodeURIComponent(normalizeUrl(trimmed))}`, {
+        retries: 0,
+        notifyOn401: false,
+        timeoutMs: 20_000,
+      })
         .then((res) => (res.ok ? res.json() : {}))
         .then((data: { title?: string }) => {
           if (!cancelled) setTitle(data.title?.trim() || null);
@@ -90,10 +96,11 @@ export default function LinkCapture({
     }
 
     try {
-      const res = await fetch('/api/clip', {
+      const res = await apiFetch('/api/clip', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        timeoutMs: LONG_TIMEOUT_MS, // 服务端抓取+正文抽取可能较慢
       });
       const result = await res.json();
       if (res.ok && result.note) {

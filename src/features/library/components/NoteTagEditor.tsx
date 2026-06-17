@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, EditIcon, useToast, fieldClass } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 export default function NoteTagEditor({
   noteId,
@@ -33,7 +34,7 @@ export default function NoteTagEditor({
     );
     setSaving(true);
     try {
-      const res = await fetch('/api/library/note-tags', {
+      const res = await apiFetch('/api/library/note-tags', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ noteId, tags: next }),

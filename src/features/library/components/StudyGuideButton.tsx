@@ -10,6 +10,7 @@
 
 import { useState } from 'react';
 import { Button, Markdown, AiIcon, CloseIcon, useToast, cardClass, cn } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 interface Props {
   domain?: string;
@@ -33,12 +34,13 @@ export default function StudyGuideButton({
   async function generate() {
     setRunning(true);
     try {
-      const res = await fetch('/api/study-guide', {
+      const res = await apiFetch('/api/study-guide', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(
           conceptIds && conceptIds.length > 0 ? { conceptIds } : { domain }
         ),
+        timeoutMs: LONG_TIMEOUT_MS, // AI 生成可能数十秒
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

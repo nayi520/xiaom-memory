@@ -29,6 +29,7 @@ import {
   type LucideIcon,
 } from '@/components/ui';
 import { PRIMARY_NAV, SECONDARY_NAV, type NavItem } from './nav-items';
+import { apiFetch } from '@/lib/api';
 
 // 命令面板额外入口：使用帮助（/guide）——不进常驻侧栏/底栏，但可由 ⌘K 快速到达。
 const EXTRA_NAV: NavItem[] = [{ href: '/guide', label: '使用帮助', Icon: AskIcon }];
@@ -129,7 +130,11 @@ export default function CommandPalette() {
     setSearching(true);
     let cancelled = false;
     const timer = setTimeout(() => {
-      fetch(`/api/library/search?q=${encodeURIComponent(q)}`)
+      // 实时搜索：按键即重发，无需自动重试；401 不弹重登浮层（仅静默空结果）。
+      apiFetch(`/api/library/search?q=${encodeURIComponent(q)}`, {
+        retries: 0,
+        notifyOn401: false,
+      })
         .then((res) => (res.ok ? res.json() : { results: [] }))
         .then((data: { results?: SearchHit[] }) => {
           if (!cancelled) setHits(data.results ?? []);

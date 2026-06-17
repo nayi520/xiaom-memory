@@ -17,6 +17,7 @@ import {
   cardClass,
   cn,
 } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 const COUNT_OPTIONS = [2, 3, 5];
 
@@ -30,10 +31,11 @@ export default function GenerateCardsButton({ conceptId }: { conceptId: string }
   async function generate() {
     setRunning(true);
     try {
-      const res = await fetch('/api/generate-cards', {
+      const res = await apiFetch('/api/generate-cards', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ conceptId, count }),
+        timeoutMs: LONG_TIMEOUT_MS, // AI 出题可能数十秒
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

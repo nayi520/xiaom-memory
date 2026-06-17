@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, GoalIcon, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 /** 缺省每日目标（张），与后端 DEFAULT_REVIEW_DAILY_GOAL 一致。 */
 const DEFAULT_GOAL = 10;
@@ -25,7 +26,7 @@ export default function ReviewDailyGoalPicker() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch('/api/settings');
+        const res = await apiFetch('/api/settings');
         if (!res.ok) throw new Error();
         const data = (await res.json()) as { settings?: { reviewDailyGoal?: number } };
         if (cancelled) return;
@@ -50,7 +51,7 @@ export default function ReviewDailyGoalPicker() {
     setGoal(next);
     setSaving(true);
     try {
-      const res = await fetch('/api/settings', {
+      const res = await apiFetch('/api/settings', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ reviewDailyGoal: next }),

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
 import { Input, ImageIcon, useToast, cn } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 /** 允许的图片类型（与 /api/images 服务端白名单一致）。 */
 const ALLOWED_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
@@ -113,7 +114,12 @@ export default function ImageCapture({
     try {
       const form = new FormData();
       form.append('file', file);
-      const upRes = await fetch('/api/images', { method: 'POST', body: form });
+      // 二进制上传，慢网下给更长超时。
+      const upRes = await apiFetch('/api/images', {
+        method: 'POST',
+        body: form,
+        timeoutMs: LONG_TIMEOUT_MS,
+      });
       const upData = await upRes.json().catch(() => ({}));
       if (!upRes.ok || !upData.key) {
         setBusy(false);
@@ -130,7 +136,7 @@ export default function ImageCapture({
     // 2. 先建 note（不等 OCR）—— /api/notes（type:'image'）。
     let note: Note;
     try {
-      const res = await fetch('/api/notes', {
+      const res = await apiFetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -156,7 +162,7 @@ export default function ImageCapture({
 
     // 3a. 标签（可选，复用 /api/library/note-tags）—— 不阻塞、失败不影响主流程。
     if (tags.length > 0) {
-      void fetch('/api/library/note-tags', {
+      void apiFetch('/api/library/note-tags', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ noteId: note.id, tags }),
@@ -167,10 +173,11 @@ export default function ImageCapture({
 
     // 3b. 异步 OCR，不阻塞。OCR 文本写回 raw_content（进搜索 + AI 整理）。
     try {
-      const res = await fetch('/api/ocr', {
+      const res = await apiFetch('/api/ocr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ noteId: note.id }),
+        timeoutMs: LONG_TIMEOUT_MS, // OCR 可能数十秒
       });
       const result = await res.json().catch(() => ({}));
       if (result.ocr) {

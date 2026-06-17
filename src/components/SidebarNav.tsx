@@ -15,7 +15,6 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { signOut } from 'next-auth/react';
 import {
   useTheme,
   Avatar,
@@ -30,6 +29,8 @@ import type { LucideIcon, Theme } from '@/components/ui';
 import { PRIMARY_NAV, SECONDARY_NAV, isNavActive, type NavItem } from './nav-items';
 import { useDueCount } from './useDueCount';
 import { openCommandPalette } from './CommandPalette';
+import { apiFetch } from '@/lib/api';
+import { signOutAndClear } from '@/lib/sign-out';
 
 export default function SidebarNav() {
   const pathname = usePathname();
@@ -193,7 +194,8 @@ function AccountRow() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/me')
+    // 侧栏资料探测：401 不弹重登浮层（页面主请求会处理），仅回退占位。
+    apiFetch('/api/me', { notifyOn401: false })
       .then((res) => (res.ok ? res.json() : null))
       .then(
         (
@@ -235,7 +237,7 @@ function AccountRow() {
       </span>
       <button
         type="button"
-        onClick={() => signOut({ callbackUrl: '/login' })}
+        onClick={() => void signOutAndClear()}
         className="shrink-0 rounded-md px-2 py-1 text-xs text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 focus-visible:outline-none dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
       >
         退出

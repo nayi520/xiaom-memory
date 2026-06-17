@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button, Skeleton, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 type Phase =
   | 'loading' // 检测中
@@ -39,7 +40,7 @@ export default function PushToggle() {
   // 拉取当前提醒时间，让文案反映真实设定（失败保留缺省 8 点）。
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/settings')
+    apiFetch('/api/settings')
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { settings?: { reminderHour?: number } } | null) => {
         const h = data?.settings?.reminderHour;
@@ -67,7 +68,7 @@ export default function PushToggle() {
         return;
       }
       try {
-        const res = await fetch('/api/push/subscribe');
+        const res = await apiFetch('/api/push/subscribe');
         const data = (await res.json()) as { configured: boolean; publicKey: string | null };
         if (cancelled) return;
         if (!data.configured || !data.publicKey) {
@@ -106,7 +107,7 @@ export default function PushToggle() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       });
-      const res = await fetch('/api/push/subscribe', {
+      const res = await apiFetch('/api/push/subscribe', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ subscription: sub.toJSON() }),
@@ -129,7 +130,7 @@ export default function PushToggle() {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
-        await fetch('/api/push/subscribe', {
+        await apiFetch('/api/push/subscribe', {
           method: 'DELETE',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ endpoint: sub.endpoint }),

@@ -11,6 +11,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Markdown, useToast, cn } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 interface WeeklyDigest {
   period: string;
@@ -34,7 +35,7 @@ export default function WeeklyDigestPanel() {
 
   const fetchLatest = useCallback(async () => {
     try {
-      const res = await fetch('/api/digest/weekly');
+      const res = await apiFetch('/api/digest/weekly');
       const data = await res.json();
       if (!res.ok) {
         setLoad({ phase: 'error', message: data?.error ?? `加载失败（${res.status}）` });
@@ -56,7 +57,7 @@ export default function WeeklyDigestPanel() {
   async function generate() {
     setGen({ phase: 'running' });
     try {
-      const res = await fetch('/api/digest/run-weekly', { method: 'POST' });
+      const res = await apiFetch('/api/digest/run-weekly', { method: 'POST', timeoutMs: LONG_TIMEOUT_MS });
       const data = await res.json();
       if (!res.ok) {
         toastError(data?.error ?? `生成失败（${res.status}）`);

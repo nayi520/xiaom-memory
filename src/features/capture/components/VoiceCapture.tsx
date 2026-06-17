@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
 import { Input, useToast, cn } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 const MAX_SECONDS = 180; // 上限 3 分钟
 
@@ -98,10 +99,11 @@ export default function VoiceCapture({
     //    去 Supabase：不再浏览器端 supabase.storage.upload；key 即 media_path（含 audio/ 前缀）。
     let mediaPath: string;
     try {
-      const upRes = await fetch('/api/audio', {
+      const upRes = await apiFetch('/api/audio', {
         method: 'POST',
         headers: { 'Content-Type': blob.type || 'audio/webm' },
         body: blob,
+        timeoutMs: LONG_TIMEOUT_MS, // 二进制上传，慢网下给更长超时
       });
       const upData = await upRes.json().catch(() => ({}));
       if (!upRes.ok || !upData.key) {
@@ -117,7 +119,7 @@ export default function VoiceCapture({
     // 2. 先建 note（不等转写）—— 改走 /api/notes（Drizzle 落库）
     let note: Note;
     try {
-      const res = await fetch('/api/notes', {
+      const res = await apiFetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -140,10 +142,11 @@ export default function VoiceCapture({
 
     // 3. 异步转写，不阻塞
     try {
-      const res = await fetch('/api/transcribe', {
+      const res = await apiFetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ noteId: note.id }),
+        timeoutMs: LONG_TIMEOUT_MS, // 转写可能数十秒
       });
       const result = await res.json();
       if (result.transcribed) {

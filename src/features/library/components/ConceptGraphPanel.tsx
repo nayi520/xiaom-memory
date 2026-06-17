@@ -21,6 +21,7 @@ import {
   SkeletonCard,
   cn,
 } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 // 画布 client-only：禁用 SSR，加载期给占位（避免布局跳动）。
 const ConceptGraph = dynamic(() => import('./ConceptGraph'), {
@@ -65,7 +66,7 @@ export default function ConceptGraphPanel() {
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    fetch('/api/library/graph')
+    apiFetch('/api/library/graph')
       .then(async (res) => {
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));

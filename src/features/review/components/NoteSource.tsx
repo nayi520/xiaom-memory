@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import type { SourceNote } from '../types';
 import { Markdown, NoteTypeIcon, WhyIcon } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 export default function NoteSource({ note }: { note: SourceNote }) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -15,7 +16,7 @@ export default function NoteSource({ note }: { note: SourceNote }) {
   useEffect(() => {
     if (!note.media_path) return;
     let cancelled = false;
-    fetch(`/api/audio/url?key=${encodeURIComponent(note.media_path)}`)
+    apiFetch(`/api/audio/url?key=${encodeURIComponent(note.media_path)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled && data?.url) setAudioUrl(data.url as string);

@@ -52,6 +52,7 @@ import {
   cn,
 } from '@/components/ui';
 import type { LucideIcon } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 /** 复习模式的展示标签与图标（模式切换 UI 用）。 */
 const MODE_META: Record<ReviewMode, { label: string; Icon: LucideIcon }> = {
@@ -224,7 +225,7 @@ export default function ReviewSession({
       });
 
       // 异步落库（写 reviews + 更新 fsrs_state），不阻塞翻下一张。
-      fetch('/api/review', {
+      apiFetch('/api/review', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ cardId: current.id, rating }),
@@ -256,7 +257,7 @@ export default function ReviewSession({
     if (!lastRated || undoing) return;
     setUndoing(true);
     try {
-      const res = await fetch('/api/review/undo', {
+      const res = await apiFetch('/api/review/undo', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -302,7 +303,7 @@ export default function ReviewSession({
     }
     setSavingEdit(true);
     try {
-      const res = await fetch(`/api/cards/${current.id}`, {
+      const res = await apiFetch(`/api/cards/${current.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ question: q, answer: a }),
@@ -326,7 +327,7 @@ export default function ReviewSession({
     setSuspending(true);
     const id = current.id;
     try {
-      const res = await fetch(`/api/cards/${id}`, {
+      const res = await apiFetch(`/api/cards/${id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ status: 'suspended' }),

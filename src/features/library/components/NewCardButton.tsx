@@ -18,6 +18,7 @@ import {
   cardClass,
   cn,
 } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 export default function NewCardButton({ conceptId }: { conceptId: string }) {
   const router = useRouter();
@@ -37,7 +38,7 @@ export default function NewCardButton({ conceptId }: { conceptId: string }) {
     }
     setSaving(true);
     try {
-      const res = await fetch('/api/cards', {
+      const res = await apiFetch('/api/cards', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({

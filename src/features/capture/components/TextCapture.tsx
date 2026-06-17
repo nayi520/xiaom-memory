@@ -1,10 +1,16 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Note } from '@/lib/types';
 import { makeTempNote, type CaptureHandlers } from '../types';
 import { enqueue, isOfflineQueueSupported } from '@/features/offline/queue';
 import { Button, Textarea, Input, Markdown, PlusIcon, cn } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
+import { useDraft } from '@/components/useDraft';
+
+/** 草稿键：未提交的捕获正文 / 为什么重要，切页或刷新都不丢。 */
+const DRAFT_CONTENT_KEY = 'mxiao.draft.capture-text';
+const DRAFT_WHY_KEY = 'mxiao.draft.capture-why';
 
 export default function TextCapture({
   addOptimistic,
@@ -12,12 +18,18 @@ export default function TextCapture({
   failNote,
   queueNote,
 }: CaptureHandlers) {
-  const [content, setContent] = useState('');
-  const [why, setWhy] = useState('');
+  // 正文 / 为什么重要走草稿暂存（localStorage，提交成功后清除）。
+  const [content, setContent, clearContentDraft] = useDraft(DRAFT_CONTENT_KEY);
+  const [why, setWhy, clearWhyDraft] = useDraft(DRAFT_WHY_KEY);
   const [showWhy, setShowWhy] = useState(false);
   // Markdown 预览切换（客户端）：编辑态显示输入框，预览态渲染 Markdown。
   const [preview, setPreview] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 草稿水合出非空「为什么重要」时，自动展开该输入（否则恢复的内容用户看不到）。
+  useEffect(() => {
+    if (why.trim()) setShowWhy(true);
+  }, [why]);
 
   /** 发一次新建请求（首次提交与「重试」共用，重试会再上屏一条新乐观占位）。 */
   async function submit(text: string, whyImportant: string | null) {
@@ -35,7 +47,7 @@ export default function TextCapture({
     }
 
     try {
-      const res = await fetch('/api/notes', {
+      const res = await apiFetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -62,9 +74,9 @@ export default function TextCapture({
     const text = content.trim();
     if (!text) return;
 
-    // 乐观 UI：立即清空，可连续记录
-    setContent('');
-    setWhy('');
+    // 乐观 UI：立即清空（含草稿），可连续记录
+    clearContentDraft();
+    clearWhyDraft();
     setPreview(false);
     textareaRef.current?.focus();
     void submit(text, why.trim() || null);

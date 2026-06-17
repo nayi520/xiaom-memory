@@ -5,13 +5,15 @@
  */
 
 import { useEffect, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 
 export default function NoteAudio({ mediaPath }: { mediaPath: string }) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/audio/url?key=${encodeURIComponent(mediaPath)}`)
+    // 签名 URL 探测：401 不弹重登浮层（页面主请求会处理），仅维持加载占位。
+    apiFetch(`/api/audio/url?key=${encodeURIComponent(mediaPath)}`, { notifyOn401: false })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled && data?.url) setUrl(data.url as string);

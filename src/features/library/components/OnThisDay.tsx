@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ClockIcon, NoteTypeIcon, ChevronRight, cardClass, cn } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 interface OnThisDayNote {
   id: string;
@@ -34,7 +35,7 @@ export default function OnThisDay() {
 
   useEffect(() => {
     let alive = true;
-    fetch('/api/notes/on-this-day')
+    apiFetch('/api/notes/on-this-day')
       .then((r) => (r.ok ? r.json() : { notes: [] }))
       .then((data) => {
         if (alive) setNotes(Array.isArray(data.notes) ? data.notes : []);

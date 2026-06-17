@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, MailIcon, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 type DigestEmailMode = 'off' | 'daily' | 'weekly';
 
@@ -34,7 +35,7 @@ export default function DigestEmailPicker() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch('/api/settings');
+        const res = await apiFetch('/api/settings');
         if (!res.ok) throw new Error();
         const data = (await res.json()) as { settings?: { digestEmail?: DigestEmailMode } };
         if (cancelled) return;
@@ -57,7 +58,7 @@ export default function DigestEmailPicker() {
     setMode(next);
     setSaving(true);
     try {
-      const res = await fetch('/api/settings', {
+      const res = await apiFetch('/api/settings', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ digestEmail: next }),

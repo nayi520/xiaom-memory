@@ -17,6 +17,7 @@ import {
   ChevronRight,
   cn,
 } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 interface Gap {
   domain: string;
@@ -39,7 +40,7 @@ export default function CheckupReport({ className }: { className?: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/checkup')
+    apiFetch('/api/checkup', { timeoutMs: LONG_TIMEOUT_MS })
       .then(async (res) => {
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error('checkup');

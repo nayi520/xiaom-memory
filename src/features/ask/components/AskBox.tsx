@@ -24,6 +24,7 @@ import {
   cn,
 } from '@/components/ui';
 import AnswerMarkdown from './AnswerMarkdown';
+import { notifySessionExpired } from '@/lib/api';
 
 interface Source {
   /** 角标编号（与答案 [n] 一致） */
@@ -208,9 +209,14 @@ export default function AskBox() {
       data = {};
     }
     if (!res.ok) {
+      // 401：会话过期——触发全局重登引导（与 apiFetch 同口径），气泡内也给明确文案。
+      if (res.status === 401) notifySessionExpired();
       patchMessage(assistantId, {
         streaming: false,
-        error: data?.error ?? `请求失败（${res.status}）`,
+        error:
+          res.status === 401
+            ? data?.error ?? '登录已过期，请重新登录后再试'
+            : data?.error ?? `请求失败（${res.status}）`,
       });
       return;
     }

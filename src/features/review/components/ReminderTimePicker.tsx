@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 /** 缺省提醒小时（北京时间 8 点），与后端保持一致。 */
 const DEFAULT_REMINDER_HOUR = 8;
@@ -27,7 +28,7 @@ export default function ReminderTimePicker() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch('/api/settings');
+        const res = await apiFetch('/api/settings');
         if (!res.ok) throw new Error();
         const data = (await res.json()) as { settings?: { reminderHour?: number } };
         if (cancelled) return;
@@ -52,7 +53,7 @@ export default function ReminderTimePicker() {
     setHour(next);
     setSaving(true);
     try {
-      const res = await fetch('/api/settings', {
+      const res = await apiFetch('/api/settings', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ reminderHour: next }),

@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { cn } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 interface Stats {
   noteCount: number;
@@ -29,7 +30,7 @@ export default function StatsPanel() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/stats')
+    apiFetch('/api/stats')
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error ?? `加载失败（${res.status}）`);

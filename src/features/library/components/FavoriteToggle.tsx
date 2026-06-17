@@ -8,6 +8,7 @@
 
 import { useState } from 'react';
 import { Button, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 export default function FavoriteToggle({
   conceptId,
@@ -25,7 +26,7 @@ export default function FavoriteToggle({
     setFav(next); // 乐观更新
     setBusy(true);
     try {
-      const res = await fetch('/api/library/favorite', {
+      const res = await apiFetch('/api/library/favorite', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ conceptId, favorite: next }),

@@ -43,7 +43,6 @@ export interface OutboxSnapshot {
 
 const DB_NAME = 'mxiao-offline';
 const STORE = 'outbox';
-const DB_VERSION = 1;
 /** 网络/5xx 自动重试上限；超过标 failed（仍可手动重试）。 */
 export const MAX_ATTEMPTS = 5;
 
@@ -57,14 +56,34 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    // 不显式指定版本：打开「当前已存在的版本」，避免本代码版本低于浏览器里已有库时
+    // （如曾被更高版本的前端建过）open(name, 1) 触发 VersionError。首次创建时浏览器按 1 建。
+    const req = indexedDB.open(DB_NAME);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, { keyPath: 'clientId' });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // 库存在但缺 outbox store（异常/被外部改动）：升一版补建，避免后续 transaction 抛错。
+      if (!db.objectStoreNames.contains(STORE)) {
+        const nextVersion = db.version + 1;
+        db.close();
+        const up = indexedDB.open(DB_NAME, nextVersion);
+        up.onupgradeneeded = () => {
+          const udb = up.result;
+          if (!udb.objectStoreNames.contains(STORE)) {
+            udb.createObjectStore(STORE, { keyPath: 'clientId' });
+          }
+        };
+        up.onsuccess = () => resolve(up.result);
+        up.onerror = () => reject(up.error);
+        return;
+      }
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
   });
   return dbPromise;
@@ -195,19 +214,30 @@ export async function flushOutbox(): Promise<number> {
   }
   flushing = true;
   let synced = 0;
+  let authStopped = false;
   try {
     const items = (await listOutbox()).filter((i) => i.status === 'pending');
     for (const item of items) {
       // 离线则直接停止本轮（剩余项等下次 online）。
       if (typeof navigator !== 'undefined' && !navigator.onLine) break;
-      const ok = await sendOne(item);
-      if (ok) synced += 1;
+      try {
+        const ok = await sendOne(item);
+        if (ok) synced += 1;
+      } catch (err) {
+        // 会话过期：中止本轮，保留剩余 pending 项，等用户重登后再 flush（不丢、不刷屏）。
+        if (err instanceof OutboxAuthStop) {
+          authStopped = true;
+          break;
+        }
+        throw err;
+      }
     }
   } finally {
     flushing = false;
   }
   if (synced > 0) await emitChange();
-  if (flushQueuedAgain) {
+  // 401 中止时不再排队重跑（否则会立刻又撞 401）；其余情况若期间有新入队则再跑一轮。
+  if (flushQueuedAgain && !authStopped) {
     flushQueuedAgain = false;
     // 串行再跑一轮（不递归占栈）。
     const more = await flushOutbox();
@@ -234,7 +264,14 @@ async function sendOne(item: OutboxItem): Promise<boolean> {
       return true;
     }
 
-    // 4xx（除 408/429）：客户端错误，重发也不会成功 → 标 failed，停自动重试。
+    // 401：会话过期/未登录——不是数据问题，重发会成功（重登后）。保持 pending、不计 attempts、
+    // 不标 failed；广播会话过期让全局引导重登。本轮不再继续（剩余项等重登后再 flush）。
+    if (res.status === 401) {
+      notifyOutboxSessionExpired();
+      throw new OutboxAuthStop();
+    }
+
+    // 4xx（除 401/408/429）：客户端错误，重发也不会成功 → 标 failed，停自动重试。
     if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
       const data = await res.json().catch(() => ({}));
       await putItem({
@@ -250,9 +287,29 @@ async function sendOne(item: OutboxItem): Promise<boolean> {
     await bumpAttempt(item, `服务暂不可用（${res.status}）`);
     return false;
   } catch (err) {
+    // 会话过期信号：向上抛，由 flush 停止本轮（不计 attempts）。
+    if (err instanceof OutboxAuthStop) throw err;
     // 网络错误：可重试，计数；达上限标 failed。
     await bumpAttempt(item, err instanceof Error ? err.message : '网络错误');
     return false;
+  }
+}
+
+/** 哨兵错误：遇到 401（会话过期）时由 sendOne 抛出，让 flush 中止本轮、保留队列等重登。 */
+class OutboxAuthStop extends Error {
+  constructor() {
+    super('outbox-auth-stop');
+    this.name = 'OutboxAuthStop';
+  }
+}
+
+/** 广播「会话过期」（与 lib/api 同一事件名），触发全局重登引导。去抖在 SessionExpiredGate 侧不需要——这里直接派发。 */
+function notifyOutboxSessionExpired(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.dispatchEvent(new CustomEvent('mxiao:session-expired'));
+  } catch {
+    /* 老环境无 CustomEvent：忽略 */
   }
 }
 
@@ -281,6 +338,29 @@ export async function retryItem(clientId: string): Promise<void> {
 /** 删除某条队列项（放弃这条离线捕获）。 */
 export async function discardItem(clientId: string): Promise<void> {
   await deleteItem(clientId);
+  await emitChange();
+}
+
+/**
+ * 清空整个本地队列（V18 账号切换边界）。
+ *
+ * 队列以 IndexedDB 存在「浏览器」维度、不区分账号——若 A 离线入队后由 B 在同一浏览器登录，
+ * B 的会话会把 A 的草稿发到 B 名下（串号）。退出登录时调用本函数清空，杜绝跨账号串号；
+ * 同时把内存里的单飞/重跑标记复位，避免遗留状态影响下一个会话。
+ *
+ * 退出前会丢弃尚未同步的离线捕获——这是可接受取舍（要么串号给别人、要么本地丢弃，后者更安全）。
+ */
+export async function clearOutbox(): Promise<void> {
+  // 复位内存态（即便 IndexedDB 不可用也要做）。
+  flushing = false;
+  flushQueuedAgain = false;
+  if (!isOfflineQueueSupported()) return;
+  try {
+    const db = await openDb();
+    await reqToPromise(tx(db, 'readwrite').clear());
+  } catch {
+    /* 清空失败（库异常）：忽略，不阻断退出登录流程 */
+  }
   await emitChange();
 }
 

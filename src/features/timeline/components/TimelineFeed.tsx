@@ -29,6 +29,7 @@ import {
   ChevronRight,
   cn,
 } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 /** 累计条数超过此阈值后启用窗口化（单列虚拟滚动）；以下保持双列网格。 */
 const VIRTUALIZE_THRESHOLD = 40;
@@ -80,7 +81,7 @@ export default function TimelineFeed() {
   const load = useCallback(async (before: string | null) => {
     const params = new URLSearchParams({ limit: '30' });
     if (before) params.set('before', before);
-    const res = await fetch(`/api/notes/timeline?${params.toString()}`);
+    const res = await apiFetch(`/api/notes/timeline?${params.toString()}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data?.error ?? `加载失败（${res.status}）`);

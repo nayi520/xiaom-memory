@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { apiFetch } from '@/lib/api';
 
 /** 已引导过的本地缓存键（仅缓存「完成」态，用于抑制重复展示）。 */
 const DONE_KEY = 'mxiao.onboarding.done.v1';
@@ -23,7 +24,7 @@ export const ONBOARDING_RESTART_EVENT = 'xiaom:restart-onboarding';
 export function requestRestartOnboarding() {
   clearLocalDone();
   // 同步把服务端置回 false（跨设备/清缓存后仍能再次看到）。失败不阻断本地重看。
-  fetch('/api/settings', {
+  apiFetch('/api/settings', {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ onboarded: false }),
@@ -96,7 +97,8 @@ export function useOnboarding(): OnboardingApi {
       return;
     }
     let cancelled = false;
-    fetch('/api/settings')
+    // 引导态探测：401 不弹重登浮层（首页主请求会处理），静默回退。
+    apiFetch('/api/settings', { notifyOn401: false })
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { settings?: { onboarded?: boolean } } | null) => {
         if (cancelled || !aliveRef.current) return;
@@ -130,7 +132,7 @@ export function useOnboarding(): OnboardingApi {
     writeLocalDone();
     setPhase('done');
     // 服务端持久化（失败不影响本地体验，下次仍以本地完成态抑制）。
-    fetch('/api/settings', {
+    apiFetch('/api/settings', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ onboarded: true }),

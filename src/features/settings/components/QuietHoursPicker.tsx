@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { ChevronDown, MoonIcon, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 interface QuietHours {
   start: number;
@@ -32,7 +33,7 @@ export default function QuietHoursPicker() {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch('/api/settings');
+        const res = await apiFetch('/api/settings');
         if (!res.ok) throw new Error();
         const data = (await res.json()) as { settings?: { quietHours?: QuietHours | null } };
         if (cancelled) return;
@@ -62,7 +63,7 @@ export default function QuietHoursPicker() {
     setQuiet(next);
     setSaving(true);
     try {
-      const res = await fetch('/api/settings', {
+      const res = await apiFetch('/api/settings', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ quietHours: next }),

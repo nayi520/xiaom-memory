@@ -13,6 +13,7 @@
 
 import { useState } from 'react';
 import { Button, RestoreIcon, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 export default function TrashItemActions({
   noteId,
@@ -36,7 +37,7 @@ export default function TrashItemActions({
     setBusy('restore');
     onOptimisticRemove(); // 乐观：先移除
     try {
-      const res = await fetch(`/api/notes/${noteId}`, {
+      const res = await apiFetch(`/api/notes/${noteId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'restore' }),
@@ -61,7 +62,7 @@ export default function TrashItemActions({
     setBusy('purge');
     onOptimisticRemove(); // 乐观：先移除
     try {
-      const res = await fetch(`/api/notes/${noteId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/notes/${noteId}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         onRollback();

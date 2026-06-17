@@ -26,6 +26,7 @@ import {
   cn,
   type LucideIcon,
 } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 interface Step {
   Icon: LucideIcon;
@@ -102,7 +103,10 @@ export default function WelcomeModal({ onDone }: { onDone: () => void }) {
     if (addingSample || sampleAdded) return;
     setAddingSample(true);
     try {
-      const res = await fetch('/api/onboarding/sample', { method: 'POST' });
+      const res = await apiFetch('/api/onboarding/sample', {
+        method: 'POST',
+        timeoutMs: LONG_TIMEOUT_MS, // 生成示例可能涉及 AI，给更长超时
+      });
       const data = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         created?: number;

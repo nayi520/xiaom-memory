@@ -13,6 +13,7 @@ import DashboardPanel from './DashboardPanel';
 import { OUTBOX_SYNCED_EVENT } from '@/features/offline/OfflineProvider';
 import { PageShell, TextIcon, VoiceIcon, LinkIcon, ImageIcon, AiIcon, useToast, cn } from '@/components/ui';
 import type { LucideIcon } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 const TABS: { key: CaptureTab; label: string; Icon: LucideIcon }[] = [
   { key: 'text', label: '文本', Icon: TextIcon },
@@ -29,7 +30,7 @@ export default function CapturePage() {
   // 加载最近 3 条（保留本地仍待同步的离线占位，避免被服务端列表覆盖丢失）。
   const refreshRecent = useCallback(() => {
     let cancelled = false;
-    fetch('/api/notes?limit=3')
+    apiFetch('/api/notes?limit=3')
       .then((res) => (res.ok ? res.json() : { notes: [] }))
       .then((data: { notes?: Note[] }) => {
         if (cancelled || !data.notes) return;

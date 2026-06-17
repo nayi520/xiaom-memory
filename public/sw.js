@@ -119,8 +119,9 @@ const OUTBOX_MAX_ATTEMPTS = 5;
 
 function openOutboxDb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(OUTBOX_DB, 1);
-    // 不建库：库由前台页面创建。若不存在则照常打开（store 可能缺失，下方读取做容错）。
+    // 不指定版本：打开「当前已存在的版本」，避免前台升过版本后 SW 用旧版本号 open 触发 VersionError。
+    // 不建库：库由前台页面创建；若 store 缺失，下方读取做容错。
+    const req = indexedDB.open(OUTBOX_DB);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -178,6 +179,9 @@ async function replayOutbox() {
       if (res.ok) {
         await deleteOutbox(db, item.clientId);
         synced += 1;
+      } else if (res.status === 401) {
+        // 会话过期：保持 pending、不计 attempts，终止本轮等用户在前台重登后再同步（与前台同口径）。
+        break;
       } else if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
         // 客户端错误：标 failed，停自动重试
         await putOutbox(db, {

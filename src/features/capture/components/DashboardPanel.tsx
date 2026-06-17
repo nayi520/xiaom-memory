@@ -27,6 +27,7 @@ import {
   ChevronRight,
   cn,
 } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 interface Stats {
   noteCount: number;
@@ -61,7 +62,7 @@ export default function DashboardPanel({ className }: { className?: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/stats')
+    apiFetch('/api/stats')
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error('stats');
@@ -82,8 +83,8 @@ export default function DashboardPanel({ className }: { className?: string }) {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      fetch('/api/review/stats').then((r) => (r.ok ? r.json() : null)),
-      fetch('/api/settings').then((r) => (r.ok ? r.json() : null)),
+      apiFetch('/api/review/stats').then((r) => (r.ok ? r.json() : null)),
+      apiFetch('/api/settings').then((r) => (r.ok ? r.json() : null)),
     ])
       .then(([rs, settings]) => {
         if (cancelled) return;
@@ -104,7 +105,7 @@ export default function DashboardPanel({ className }: { className?: string }) {
   // 智能推荐（V16，次要信息独立拉取；失败/为空则不显示该块，不影响主面板）。
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/recommend')
+    apiFetch('/api/recommend')
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data) return;

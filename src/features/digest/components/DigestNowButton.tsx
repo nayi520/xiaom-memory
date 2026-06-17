@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { DigestResult } from '../pipeline';
 import { Button, useToast } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 type State =
   | { phase: 'idle' }
@@ -17,7 +18,7 @@ export default function DigestNowButton() {
   async function run() {
     setState({ phase: 'running' });
     try {
-      const res = await fetch('/api/digest/run', { method: 'POST' });
+      const res = await apiFetch('/api/digest/run', { method: 'POST', timeoutMs: LONG_TIMEOUT_MS });
       const data = await res.json();
       if (!res.ok) {
         toastError(data.error ?? `请求失败（${res.status}）`);

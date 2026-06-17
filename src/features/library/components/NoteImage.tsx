@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { cn } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 export default function NoteImage({
   mediaPath,
@@ -24,7 +25,8 @@ export default function NoteImage({
     let cancelled = false;
     setUrl(null);
     setFailed(false);
-    fetch(`/api/images/url?key=${encodeURIComponent(mediaPath)}`)
+    // 签名 URL 探测：401 不弹重登浮层（页面其它主请求会处理），仅显示图片占位。
+    apiFetch(`/api/images/url?key=${encodeURIComponent(mediaPath)}`, { notifyOn401: false })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (cancelled) return;

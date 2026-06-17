@@ -11,6 +11,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, TrashIcon, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 export default function NoteDeleteButton({
   noteId,
@@ -33,7 +34,7 @@ export default function NoteDeleteButton({
   async function trash() {
     setBusy(true);
     try {
-      const res = await fetch(`/api/notes/${noteId}`, {
+      const res = await apiFetch(`/api/notes/${noteId}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'trash' }),

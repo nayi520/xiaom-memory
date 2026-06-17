@@ -9,6 +9,7 @@
 
 import { useState } from 'react';
 import { Button, useToast } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 function filenameFromDisposition(header: string | null): string | null {
   if (!header) return null;
@@ -23,7 +24,8 @@ export default function ExportAnkiButton() {
   async function exportAnki() {
     setBusy(true);
     try {
-      const res = await fetch('/api/export/anki');
+      // 导出可能较大：给更长超时；不自动重试（避免大文件重复下载）。
+      const res = await apiFetch('/api/export/anki', { timeoutMs: 30_000, retries: 0 });
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         toastError(text || `导出失败（${res.status}）`);

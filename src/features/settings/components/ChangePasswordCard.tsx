@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react';
 import { Button, Input, cardClass, useToast, cn } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 /** 密码最小长度（与 /api/profile/password、password.ts 的 MIN_PASSWORD_LENGTH 保持一致）。 */
 const MIN_PASSWORD_LENGTH = 8;
@@ -34,7 +35,7 @@ export default function ChangePasswordCard() {
   // 取账户是否已设密码（复用 /api/me 的 hasPassword）。
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/me')
+    apiFetch('/api/me')
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
         return (await res.json()) as { hasPassword?: boolean };
@@ -79,7 +80,7 @@ export default function ChangePasswordCard() {
 
     setSaving(true);
     try {
-      const res = await fetch('/api/profile/password', {
+      const res = await apiFetch('/api/profile/password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(

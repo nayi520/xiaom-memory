@@ -21,6 +21,7 @@ import {
   fieldClass,
   cn,
 } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 export interface EditableConcept {
   id: string;
@@ -52,7 +53,7 @@ export default function ConceptEditor({ concept }: { concept: EditableConcept })
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/library/concept/${concept.id}`, {
+      const res = await apiFetch(`/api/library/concept/${concept.id}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -215,7 +216,7 @@ function MergePanel({
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(
+        const res = await apiFetch(
           `/api/library/search?mode=keyword&q=${encodeURIComponent(q)}`
         );
         const data = await res.json();
@@ -239,7 +240,7 @@ function MergePanel({
     if (!target) return;
     setMerging(true);
     try {
-      const res = await fetch(`/api/library/concept/${concept.id}/merge`, {
+      const res = await apiFetch(`/api/library/concept/${concept.id}/merge`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ targetId: target.id }),

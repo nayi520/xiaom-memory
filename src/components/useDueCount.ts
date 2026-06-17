@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
 
 export function useDueCount(): number {
   const pathname = usePathname();
@@ -15,7 +16,8 @@ export function useDueCount(): number {
   useEffect(() => {
     if (hidden) return;
     let cancelled = false;
-    fetch('/api/review/due')
+    // 后台角标轮询：401 不触发重登浮层（避免会话刷新瞬间误报），仅静默回退。
+    apiFetch('/api/review/due', { notifyOn401: false })
       .then((res) => (res.ok ? res.json() : { due: 0 }))
       .then((data: { due?: number }) => {
         if (!cancelled && typeof data.due === 'number') setDue(data.due);

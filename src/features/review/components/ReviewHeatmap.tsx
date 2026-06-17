@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { GoalIcon, TrendIcon, ReviewIcon, WarningIcon, cn } from '@/components/ui';
+import { apiFetch } from '@/lib/api';
 
 interface DailyCell {
   date: string;
@@ -59,7 +60,7 @@ export default function ReviewHeatmap({ className }: { className?: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/review/stats')
+    apiFetch('/api/review/stats')
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error('stats');

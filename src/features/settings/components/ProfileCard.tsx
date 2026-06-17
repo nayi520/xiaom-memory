@@ -22,6 +22,7 @@ import {
   SpinnerIcon,
   cn,
 } from '@/components/ui';
+import { apiFetch, LONG_TIMEOUT_MS } from '@/lib/api';
 
 interface Me {
   email: string | null;
@@ -47,7 +48,7 @@ export default function ProfileCard() {
   // 初次加载资料。
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/me')
+    apiFetch('/api/me')
       .then(async (res) => {
         if (!res.ok) throw new Error(String(res.status));
         return (await res.json()) as Me;
@@ -73,7 +74,7 @@ export default function ProfileCard() {
     }
     setSavingName(true);
     try {
-      const res = await fetch('/api/profile', {
+      const res = await apiFetch('/api/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: trimmed }),
@@ -114,7 +115,11 @@ export default function ProfileCard() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch('/api/profile/avatar', { method: 'POST', body: form });
+      const res = await apiFetch('/api/profile/avatar', {
+        method: 'POST',
+        body: form,
+        timeoutMs: LONG_TIMEOUT_MS, // 头像二进制上传，给更长超时
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error ?? `上传失败（${res.status}）`);
       setMe((prev) => (prev ? { ...prev, avatarUrl: data.avatarUrl ?? null } : prev));
