@@ -35,12 +35,17 @@ import type {
   WeeklyConceptRow,
   WeeklyLinkRow,
   WeeklyDigestRecord,
+  ActionableSuggestions,
 } from './weekly';
 
 /** vector(1536) 的 pgvector 文本表示：'[a,b,c]' */
 function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.join(',')}]`;
 }
+
+/** 周报「可操作建议」素材的取量上限（避免提示词过长 / 建议太碎）。 */
+const ACTIONABLE_DUE_LIMIT = 8;
+const ACTIONABLE_DOMAIN_LIMIT = 5;
 
 /** match_concepts 原始 SQL 行（created_at 由驱动返回 Date，相似度可能为字符串数值）
  *  用 type 别名（含索引签名）以满足 db.execute<TRow extends Record<string, unknown>>。 */
@@ -335,6 +340,48 @@ export function createDigestStore(db: Database): DigestStore & WeeklyStore {
         .orderBy(desc(digests.period))
         .limit(1);
       return rows[0] ?? null;
+    },
+
+    async getActionableSuggestions(userId, nowIso): Promise<ActionableSuggestions> {
+      // —— dueConcepts：有到期 active 卡的概念，按最早到期升序、去重限量（与 /api/recommend 同口径）——
+      const dueRows = await db
+        .select({
+          name: concepts.name,
+          nextDue: sql<string>`min(${cards.fsrsState}->>'due')`,
+        })
+        .from(cards)
+        .innerJoin(concepts, eq(concepts.id, cards.conceptId))
+        .where(
+          and(
+            eq(concepts.userId, userId),
+            eq(cards.status, 'active'),
+            sql`${cards.fsrsState}->>'due' <= ${nowIso}`
+          )
+        )
+        .groupBy(concepts.id, concepts.name)
+        .orderBy(sql`min(${cards.fsrsState}->>'due') asc`)
+        .limit(ACTIONABLE_DUE_LIMIT);
+      const dueConcepts = dueRows.map((r) => r.name).filter(Boolean);
+
+      // —— domainsWithoutCards：有概念、但其下概念都还没有任何卡片的领域 ——
+      // 取本人每个（非空）领域：概念总数 与「有卡片的概念」数；后者为 0 即该领域无卡。
+      const domainRows = await db
+        .select({
+          domain: concepts.domain,
+          conceptCount: sql<number>`count(distinct ${concepts.id})`,
+          withCardCount: sql<number>`count(distinct ${cards.conceptId})`,
+        })
+        .from(concepts)
+        .leftJoin(cards, eq(cards.conceptId, concepts.id))
+        .where(and(eq(concepts.userId, userId), sql`${concepts.domain} is not null`))
+        .groupBy(concepts.domain);
+      const domainsWithoutCards = domainRows
+        .filter((r) => Number(r.conceptCount) > 0 && Number(r.withCardCount) === 0)
+        .map((r) => (r.domain ?? '').trim())
+        .filter(Boolean)
+        .slice(0, ACTIONABLE_DOMAIN_LIMIT);
+
+      return { dueConcepts, domainsWithoutCards };
     },
   };
 }

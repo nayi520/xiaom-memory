@@ -44,6 +44,40 @@ function resolveReminderHour(settings: unknown): number {
   return Number.isInteger(n) && n >= 0 && n <= 23 ? n : DEFAULT_REMINDER_HOUR;
 }
 
+/** 把任意值收敛为 0–23 整点（非法 → null）。与 /api/settings 的 toHour 同口径。 */
+function toHour(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseInt(v, 10) : NaN;
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
+}
+
+/**
+ * 从 profiles.settings.quietHours 解析安静时段（V17）。未设置 / 非法 / 空区间 → null（不静默）。
+ * 形态 { start, end }（两个 0–23 北京整点），允许跨午夜（start>end）。
+ */
+function resolveQuietHours(settings: unknown): { start: number; end: number } | null {
+  const raw =
+    settings && typeof settings === 'object'
+      ? (settings as Record<string, unknown>).quietHours
+      : undefined;
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const start = toHour(obj.start);
+  const end = toHour(obj.end);
+  if (start === null || end === null || start === end) return null;
+  return { start, end };
+}
+
+/**
+ * 当前北京小时是否落在安静时段 [start, end) 内（半开区间，end 当点已不静默）。
+ * 支持跨午夜：start>end 时表示「start..23 + 0..end-1」。qh=null 恒为 false。
+ */
+function inQuietHours(hour: number, qh: { start: number; end: number } | null): boolean {
+  if (!qh) return false;
+  return qh.start < qh.end
+    ? hour >= qh.start && hour < qh.end
+    : hour >= qh.start || hour < qh.end;
+}
+
 /**
  * 把简报 Markdown 收成一行摘要：取首个有内容的行，去掉 #/-/* 等标记，截断。
  * 无内容时返回 null（调用方据此优雅省略该行）。
@@ -69,7 +103,8 @@ function digestSnippet(contentMd: string | null | undefined): string | null {
  * GET/POST /api/cron/remind —— 每晨复习提醒（F2.6 + F3.2）
  * 鉴权：Authorization: Bearer ${CRON_SECRET}
  * 逻辑：每整点运行 → 仅给"settings.reminderHour == 当前北京小时"的用户推送
- *      （未设置者缺省 8 点）→ 统计到期 active 卡数 → >0 则推送
+ *      （未设置者缺省 8 点）→ 安静时段（V17 settings.quietHours）内即便到点也跳过
+ *      → 统计到期 active 卡数 → >0 则推送
  *      "今天有 N 张卡片待复习，预计 X 分钟"（每张 30 秒、上限 20 张估时），
  *      并附最近一条 daily 简报的一行摘要（无简报时省略）。
  * Vercel Cron：每整点 UTC（见 vercel.json），到点用户由 reminderHour 决定。
@@ -131,6 +166,7 @@ async function handle(request: Request) {
     const currentHour = beijingHour(now);
     let usersNotified = 0;
     let usersSkippedHour = 0;
+    let usersSkippedQuiet = 0;
     let sent = 0;
     let removed = 0;
     const errors: string[] = [];
@@ -152,6 +188,12 @@ async function handle(request: Request) {
       }
       if (resolveReminderHour(profileSettings) !== currentHour) {
         usersSkippedHour += 1;
+        continue;
+      }
+
+      // 安静时段（V17）：即便到点，若当前北京小时落在用户安静时段内，则本次不打扰。
+      if (inQuietHours(currentHour, resolveQuietHours(profileSettings))) {
+        usersSkippedQuiet += 1;
         continue;
       }
 
@@ -226,6 +268,7 @@ async function handle(request: Request) {
       subscriptions: subs.length,
       usersNotified,
       usersSkippedHour,
+      usersSkippedQuiet,
       sent,
       removed,
       errors,

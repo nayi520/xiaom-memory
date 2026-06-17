@@ -60,6 +60,7 @@ import {
   Bug,
   Undo2,
   Layers,
+  LineChart,
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
@@ -119,6 +120,7 @@ export {
   Bug as LeechIcon,
   Undo2 as UndoIcon,
   Layers as CramIcon,
+  LineChart as InsightsIcon,
 };
 
 /** 记录类型 → 图标组件（一处定义，替代各页重复的 TYPE_ICON emoji 表）。 */

@@ -69,6 +69,11 @@ export interface WeeklyStore {
   saveWeeklyDigest(userId: string, period: string, contentMd: string): Promise<void>;
   /** 最新一篇周报（按 period 倒序），无则 null */
   getLatestWeeklyDigest(userId: string): Promise<WeeklyDigestRecord | null>;
+  /**
+   * 可操作建议素材（V16，可选——旧实现/测试 mock 未提供时周报照常生成，仅缺该节素材）：
+   * 该复习的概念 + 有概念但无卡片的领域。纯读、零 LLM。
+   */
+  getActionableSuggestions?(userId: string, nowIso: string): Promise<ActionableSuggestions>;
 }
 
 // ============ 周窗口（ISO 周，周一起，Asia/Shanghai 固定 +08:00） ============
@@ -215,6 +220,17 @@ export async function runWeeklyDigestForUser(
       ? dailies.map((d) => `【${d.period}】\n${d.contentMd}`).join('\n\n---\n\n')
       : '（本周没有每日简报）';
 
+  // V16：可操作建议素材（该复习的概念 + 有概念但无卡片的领域）。
+  // store 未实现该方法、或取数失败时退化为空素材——周报照常生成，仅「可操作建议」节素材为空。
+  let actionable = { dueConcepts: [] as string[], domainsWithoutCards: [] as string[] };
+  if (store.getActionableSuggestions) {
+    try {
+      actionable = await store.getActionableSuggestions(userId, (deps.now ?? new Date()).toISOString());
+    } catch (err) {
+      log(`可操作建议素材获取失败（不阻塞周报）：${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   const contentMd = await llm.text(
     buildP5Prompt({
       week_label: w.period,
@@ -237,6 +253,7 @@ export async function runWeeklyDigestForUser(
           reason: l.reason ?? '',
         }))
       ),
+      actionable_json: JSON.stringify(actionable),
     }),
     { model: 'haiku', task: 'P5', system: GLOBAL_SYSTEM }
   );

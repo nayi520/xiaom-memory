@@ -9,9 +9,12 @@ export const dynamic = 'force-dynamic';
 /**
  * 用户设置（profiles.settings jsonb）—— 去 Supabase 改造
  *
- * GET   → { settings: { reminderHour, reviewDailyGoal, onboarded } }（无 profile / 未设置时回各自缺省）
- * PATCH → 写 settings.reminderHour（0–23 整点，北京时间）、settings.reviewDailyGoal（每日复习目标，1–100）
- *         和/或 settings.onboarded（是否已看过新手引导，布尔，默认 false）。
+ * GET   → { settings: { reminderHour, reviewDailyGoal, onboarded, quietHours, digestEmail } }
+ *         （无 profile / 未设置时回各自缺省；quietHours 未启用时为 null）
+ * PATCH → 写 settings.reminderHour（0–23 整点，北京时间）、settings.reviewDailyGoal（每日复习目标，1–100）、
+ *         settings.onboarded（是否已看过新手引导，布尔，默认 false）、
+ *         settings.quietHours（安静时段 {start,end} 两个北京整点，提醒/推送避开；传 null 清除）、
+ *         settings.digestEmail（摘要邮件开关 'off'|'daily'|'weekly'，默认 'off'）。
  *         各键各自可选，可单独或同时提交；至少要带一项，否则 400。
  *
  * 鉴权 getCurrentUser() 短路；授权应用层——按 user.id 读/写 profiles（原靠 RLS）。
@@ -61,6 +64,51 @@ function resolveOnboarded(settings: unknown): boolean {
   return raw === true;
 }
 
+/** 摘要邮件开关取值（V17）。'off' 不发；'daily'/'weekly' 由 cron/digest 用 sendMail 发对应摘要。 */
+export type DigestEmailMode = 'off' | 'daily' | 'weekly';
+const DEFAULT_DIGEST_EMAIL: DigestEmailMode = 'off';
+const DIGEST_EMAIL_VALUES: DigestEmailMode[] = ['off', 'daily', 'weekly'];
+
+/** 从 settings 收敛出 digestEmail（非法/缺省回退 'off'）。 */
+function resolveDigestEmail(settings: unknown): DigestEmailMode {
+  const raw =
+    settings && typeof settings === 'object'
+      ? (settings as Record<string, unknown>).digestEmail
+      : undefined;
+  return DIGEST_EMAIL_VALUES.includes(raw as DigestEmailMode)
+    ? (raw as DigestEmailMode)
+    : DEFAULT_DIGEST_EMAIL;
+}
+
+/** 安静时段（V17）：{start,end} 两个北京整点（0–23）。提醒/推送在该时段内静默。 */
+export interface QuietHours {
+  start: number;
+  end: number;
+}
+
+/** 把任意值收敛为 0–23 整点（非法 → null）。 */
+function toHour(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : typeof v === 'string' ? Number.parseInt(v, 10) : NaN;
+  return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
+}
+
+/**
+ * 从 settings 收敛出 quietHours（V17）。未设置 / 非法 → null（= 不启用安静时段）。
+ * start/end 均须为 0–23 整数；允许跨午夜（start>end，如 22→7）。start===end 视为未启用（空区间）。
+ */
+function resolveQuietHours(settings: unknown): QuietHours | null {
+  const raw =
+    settings && typeof settings === 'object'
+      ? (settings as Record<string, unknown>).quietHours
+      : undefined;
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const start = toHour(obj.start);
+  const end = toHour(obj.end);
+  if (start === null || end === null || start === end) return null;
+  return { start, end };
+}
+
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) {
@@ -79,6 +127,8 @@ export async function GET() {
         reminderHour: resolveReminderHour(settings),
         reviewDailyGoal: resolveReviewDailyGoal(settings),
         onboarded: resolveOnboarded(settings),
+        quietHours: resolveQuietHours(settings),
+        digestEmail: resolveDigestEmail(settings),
       },
     });
   } catch (err) {
@@ -93,7 +143,13 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: '未登录' }, { status: 401 });
   }
 
-  let body: { reminderHour?: unknown; reviewDailyGoal?: unknown; onboarded?: unknown };
+  let body: {
+    reminderHour?: unknown;
+    reviewDailyGoal?: unknown;
+    onboarded?: unknown;
+    quietHours?: unknown;
+    digestEmail?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -102,7 +158,13 @@ export async function PATCH(request: Request) {
 
   // 校验提交的键（各自可选）；累积成一个 jsonb 合并对象，整体 upsert，不覆盖 settings 其它键。
   const patchEntries: ReturnType<typeof sql>[] = [];
-  const echo: { reminderHour?: number; reviewDailyGoal?: number; onboarded?: boolean } = {};
+  const echo: {
+    reminderHour?: number;
+    reviewDailyGoal?: number;
+    onboarded?: boolean;
+    quietHours?: QuietHours | null;
+    digestEmail?: DigestEmailMode;
+  } = {};
 
   if (body.reminderHour !== undefined) {
     const raw = body.reminderHour;
@@ -159,9 +221,59 @@ export async function PATCH(request: Request) {
     echo.onboarded = flag;
   }
 
+  // quietHours：{start,end} 两个 0–23 整点，或 null（清除）。start===end 视为清除（空区间）。
+  if (body.quietHours !== undefined) {
+    const raw = body.quietHours;
+    if (raw === null) {
+      patchEntries.push(sql`jsonb_build_object('quietHours', null)`);
+      echo.quietHours = null;
+    } else if (raw && typeof raw === 'object') {
+      const obj = raw as Record<string, unknown>;
+      const start = toHour(obj.start);
+      const end = toHour(obj.end);
+      if (start === null || end === null) {
+        return NextResponse.json(
+          { error: 'quietHours.start / quietHours.end 必须是 0–23 的整数' },
+          { status: 400 }
+        );
+      }
+      if (start === end) {
+        // 空区间 = 清除安静时段。
+        patchEntries.push(sql`jsonb_build_object('quietHours', null)`);
+        echo.quietHours = null;
+      } else {
+        patchEntries.push(
+          sql`jsonb_build_object('quietHours', jsonb_build_object('start', ${start}::int, 'end', ${end}::int))`
+        );
+        echo.quietHours = { start, end };
+      }
+    } else {
+      return NextResponse.json(
+        { error: 'quietHours 必须是 {start,end} 对象或 null' },
+        { status: 400 }
+      );
+    }
+  }
+
+  // digestEmail：'off' | 'daily' | 'weekly'。
+  if (body.digestEmail !== undefined) {
+    const raw = body.digestEmail;
+    if (!DIGEST_EMAIL_VALUES.includes(raw as DigestEmailMode)) {
+      return NextResponse.json(
+        { error: "digestEmail 必须是 'off'、'daily' 或 'weekly'" },
+        { status: 400 }
+      );
+    }
+    patchEntries.push(sql`jsonb_build_object('digestEmail', ${raw}::text)`);
+    echo.digestEmail = raw as DigestEmailMode;
+  }
+
   if (patchEntries.length === 0) {
     return NextResponse.json(
-      { error: '参数错误：需要 reminderHour、reviewDailyGoal 或 onboarded 中的至少一项' },
+      {
+        error:
+          '参数错误：需要 reminderHour、reviewDailyGoal、onboarded、quietHours 或 digestEmail 中的至少一项',
+      },
       { status: 400 }
     );
   }

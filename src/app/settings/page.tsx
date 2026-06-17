@@ -6,6 +6,8 @@ import ReminderTimePicker from '@/features/review/components/ReminderTimePicker'
 import StatsPanel from '@/features/settings/components/StatsPanel';
 import ReviewHeatmap from '@/features/review/components/ReviewHeatmap';
 import ReviewDailyGoalPicker from '@/features/review/components/ReviewDailyGoalPicker';
+import QuietHoursPicker from '@/features/settings/components/QuietHoursPicker';
+import DigestEmailPicker from '@/features/settings/components/DigestEmailPicker';
 import ProfileCard from '@/features/settings/components/ProfileCard';
 import ChangePasswordCard from '@/features/settings/components/ChangePasswordCard';
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
@@ -16,6 +18,7 @@ import {
   SectionTitle,
   ThemeToggle,
   TrashIcon,
+  InsightsIcon,
   ChevronRight,
   SiteFooter,
   cardClass,
@@ -45,10 +48,27 @@ export default function SettingsPage() {
         <ChangePasswordCard />
       </section>
 
-      {/* 数据统计：横跨整宽（四项计数在桌面铺成一行） */}
+      {/* 数据统计：横跨整宽（四项计数在桌面铺成一行）+ 进入洞察页入口 */}
       <section className="space-y-2.5">
         <SectionTitle className="mb-1">数据统计</SectionTitle>
         <StatsPanel />
+        <Link
+          href="/insights"
+          className={cn(
+            cardClass({ interactive: true, padded: false }),
+            'group flex items-center justify-between px-4 py-4'
+          )}
+        >
+          <span className="flex items-center gap-2.5 font-medium text-zinc-800 dark:text-zinc-100">
+            <InsightsIcon aria-hidden className="h-[18px] w-[18px] text-brand" />
+            知识成长洞察
+            <span className="text-xs font-normal text-zinc-400">成长曲线 · 领域分布 · 成就 · 体检</span>
+          </span>
+          <ChevronRight
+            aria-hidden
+            className="h-4 w-4 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+          />
+        </Link>
       </section>
 
       {/* 复习统计：年度热力图 + 保留率 + 今日已复习（横跨整宽） */}
@@ -84,7 +104,9 @@ export default function SettingsPage() {
           <SectionTitle className="mb-1">复习提醒</SectionTitle>
           <ReviewDailyGoalPicker />
           <ReminderTimePicker />
+          <QuietHoursPicker />
           <PushToggle />
+          <DigestEmailPicker />
         </section>
 
         <section className="space-y-2.5">

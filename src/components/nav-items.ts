@@ -6,7 +6,7 @@
  *   入口本就藏在知识库页右上，底栏保持四项不拥挤。
  * 复习项标记 badge: 'due'，由消费方决定如何渲染到期角标。
  */
-import { Pencil, BookOpenCheck, Library, Settings, MessageCircleQuestion, Clock } from 'lucide-react';
+import { Pencil, BookOpenCheck, Library, Settings, MessageCircleQuestion, Clock, LineChart } from 'lucide-react';
 import type { LucideIcon } from '@/components/ui';
 
 export interface NavItem {
@@ -26,6 +26,7 @@ export const PRIMARY_NAV: NavItem[] = [
 
 export const SECONDARY_NAV: NavItem[] = [
   { href: '/ask', label: '问小M', Icon: MessageCircleQuestion },
+  { href: '/insights', label: '洞察', Icon: LineChart },
   { href: '/timeline', label: '时间线', Icon: Clock },
 ];
 

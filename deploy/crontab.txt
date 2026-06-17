@@ -33,7 +33,10 @@
 # PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 # CRON_SECRET=粘贴与_env.production_一致的密钥
 
-# ---- 每晚 23:00（北京时间）：AI 每日整理流水线 -------------------------------
+# ---- 每晚 23:00（北京时间）：AI 每日整理流水线（V17 起顺带发摘要邮件）----------
+#      整理跑完后，会按用户「设置 › 摘要邮件」开关（settings.digestEmail=daily|weekly）
+#      用 DirectMail 发对应最新一期摘要到账号邮箱——复用既有 DIRECTMAIL_* 配置，
+#      无需为摘要邮件单独再加 cron。DirectMail 未配置则自动跳过、不影响整理。
 # 分 时 日 月 周
 0 23 * * * curl -fsS -m 280 -X POST -H "Authorization: Bearer $CRON_SECRET" https://memory.nayitools.cn/api/cron/digest >> /var/log/xiaom-cron-digest.log 2>&1
 

@@ -186,6 +186,14 @@ curl -i        -H "Authorization: Bearer <你的CRON_SECRET>" https://memory.nay
 ```
 > 时区前提见 §1.4。digest 北京 23:00、remind 每整点；remind 内部按用户 `reminderHour` 筛到点者。
 
+> **摘要邮件（V17）无需新增 cron**：`/api/cron/digest` 跑完每日整理后，会顺带按用户「设置 ›
+> 摘要邮件」开关（`profiles.settings.digestEmail = daily|weekly`）用 DirectMail 把对应最新一期摘要
+> 发到账号邮箱——复用既有 `DIRECTMAIL_*` 配置，**沿用现有那一条 digest 定时任务即可**。
+> 未配置 DirectMail 时该步骤整体跳过、不影响整理（接口返回的 `email.mailDisabled=true`）。
+> 周报本身仍需手动 / 另行生成（`/api/digest/run-weekly`）；digest 邮件只负责「发已生成的最新一期」。
+> **安静时段（V17）** 同样无需新增任务：`/api/cron/remind` 内部据 `profiles.settings.quietHours`
+> 在静默时段跳过推送。
+
 ---
 
 ## 7. 安全组 / 备案 / 端口提醒
