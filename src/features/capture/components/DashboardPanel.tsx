@@ -3,12 +3,14 @@
 /**
  * 首页概览面板（V6 Dashboard）——把首页从「纯捕获」升级为「捕获 + 概览」。
  *
- * 三块内容：
+ * 内容：
  *   1) 连续记录天数 streak（醒目卡，火苗图标）+ 今日待复习（点击进 /review，带数字角标）；
  *   2) 知识概览：概念数 / 笔记数 / 本周新增（来自 /api/stats）；
- *   3) 最近捕获由 CapturePage 复用 RecentNotes 单独渲染，不在本组件内。
+ *   3) 智能推荐（V16）：来自 /api/recommend——该复习的概念（点击进 /review）+ 值得回看的相关概念
+ *      （点击进概念详情）；两组都空则整块不渲染；
+ *   4) 最近捕获由 CapturePage 复用 RecentNotes 单独渲染，不在本组件内。
  *
- * 数据：挂载时 GET /api/stats（已鉴权 + userId 过滤）。加载中骨架；失败友好降级、不崩溃。
+ * 数据：挂载时 GET /api/stats、/api/recommend（已鉴权 + userId 过滤）。加载中骨架；失败友好降级、不崩溃。
  * 空状态（全 0）友好引导去记录 / 复习。深浅色与既有设计系统一致。
  */
 
@@ -41,10 +43,21 @@ interface GoalInfo {
   goal: number;
 }
 
+/** 智能推荐（/api/recommend）：该复习的概念 + 值得回看的相关概念。 */
+interface RecommendConcept {
+  conceptId: string;
+  name: string;
+}
+interface Recommend {
+  review: RecommendConcept[];
+  related: RecommendConcept[];
+}
+
 export default function DashboardPanel({ className }: { className?: string }) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState(false);
   const [goalInfo, setGoalInfo] = useState<GoalInfo | null>(null);
+  const [recommend, setRecommend] = useState<Recommend | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +95,25 @@ export default function DashboardPanel({ className }: { className?: string }) {
       })
       .catch(() => {
         /* 次要信息失败：不显示目标进度，静默 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 智能推荐（V16，次要信息独立拉取；失败/为空则不显示该块，不影响主面板）。
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/recommend')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        const review = Array.isArray(data.review) ? data.review : [];
+        const related = Array.isArray(data.related) ? data.related : [];
+        if (review.length > 0 || related.length > 0) setRecommend({ review, related });
+      })
+      .catch(() => {
+        /* 推荐失败：静默不显示 */
       });
     return () => {
       cancelled = true;
@@ -136,7 +168,80 @@ export default function DashboardPanel({ className }: { className?: string }) {
           </p>
         )}
       </div>
+
+      {/* 智能推荐（V16）：该复习的概念 + 值得回看的相关概念。 */}
+      {recommend && (
+        <RecommendSection review={recommend.review} related={recommend.related} />
+      )}
     </section>
+  );
+}
+
+/** 智能推荐区：两组概念 chips——待复习（进 /review）/ 相关概念（进概念详情）。 */
+function RecommendSection({
+  review,
+  related,
+}: {
+  review: RecommendConcept[];
+  related: RecommendConcept[];
+}) {
+  return (
+    <div className="animate-fade-in">
+      <SectionTitle>为你推荐</SectionTitle>
+      <div className="space-y-3">
+        {review.length > 0 && (
+          <RecommendGroup
+            icon={<ReviewIcon aria-hidden className="h-3.5 w-3.5 text-brand" />}
+            title="该复习了"
+            concepts={review}
+            // 待复习概念点击进复习页（卡片在队列里）。
+            hrefOf={() => '/review'}
+          />
+        )}
+        {related.length > 0 && (
+          <RecommendGroup
+            icon={<LibraryIcon aria-hidden className="h-3.5 w-3.5 text-sky-500" />}
+            title="值得回看"
+            concepts={related}
+            hrefOf={(c) => `/library/concept/${c.conceptId}`}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 一组推荐概念：标题 + 概念 chips（点击跳转）。 */
+function RecommendGroup({
+  icon,
+  title,
+  concepts,
+  hrefOf,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  concepts: RecommendConcept[];
+  hrefOf: (c: RecommendConcept) => string;
+}) {
+  return (
+    <div className="rounded-card border border-zinc-200/80 bg-white px-4 py-3 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        {icon}
+        {title}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {concepts.map((c) => (
+          <Link
+            key={c.conceptId}
+            href={hrefOf(c)}
+            className="inline-flex max-w-full items-center gap-0.5 rounded-pill bg-brand-light px-2.5 py-1 text-xs font-medium text-brand transition hover:bg-brand/15 active:scale-95 dark:bg-brand/15 dark:text-brand-100 dark:hover:bg-brand/25"
+          >
+            <span className="truncate">{c.name}</span>
+            <ChevronRight aria-hidden className="h-3 w-3 shrink-0 opacity-70" />
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 

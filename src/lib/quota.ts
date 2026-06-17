@@ -19,8 +19,12 @@ import { sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { usageCounters } from '@/lib/db/schema';
 
-/** 配额计量的操作类型（= usage_counters.kind 取值）。ocr=图片转文字（V13，qwen-vl）。 */
-export type QuotaKind = 'ask' | 'transcribe' | 'clip' | 'embedding' | 'ocr';
+/**
+ * 配额计量的操作类型（= usage_counters.kind 取值；text 列，新增 kind 无需迁移）。
+ *   ocr=图片转文字（V13，qwen-vl）。
+ *   gen=AI 生成（V16：概念出题 generate-cards / 学习指南 study-guide，均走 qwen-plus，同档计量）。
+ */
+export type QuotaKind = 'ask' | 'transcribe' | 'clip' | 'embedding' | 'ocr' | 'gen';
 
 /** 各 kind 的 env 变量名与缺省每日上限（够日常自用）。 */
 const QUOTA_CONFIG: Record<QuotaKind, { env: string; fallback: number }> = {
@@ -30,6 +34,8 @@ const QUOTA_CONFIG: Record<QuotaKind, { env: string; fallback: number }> = {
   embedding: { env: 'QUOTA_EMBED_DAILY', fallback: 500 },
   // 图片 OCR（qwen-vl 多模态）：与转写同档（图片捕获频率与语音相当）。
   ocr: { env: 'QUOTA_OCR_DAILY', fallback: 50 },
+  // AI 生成（概念出题 / 学习指南）：单次较重，日上限给 30，够手动按需用。
+  gen: { env: 'QUOTA_GEN_DAILY', fallback: 30 },
 };
 
 /** 解析某 kind 的每日上限：env 有合法整数则用之，否则用缺省。负数 = 不限。 */

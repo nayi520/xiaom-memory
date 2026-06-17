@@ -36,6 +36,16 @@ export interface WeeklyDigestRecord {
   content: string;
 }
 
+/**
+ * 可操作建议素材（V16）：让周报「### 可操作建议」落到具体概念/领域上。
+ *   - dueConcepts：已到复习期（有到期 active 卡）的概念名，最早到期优先，去重限量。
+ *   - domainsWithoutCards：有概念但其下概念**都没有任何复习卡片**的领域名，限量。
+ */
+export interface ActionableSuggestions {
+  dueConcepts: string[];
+  domainsWithoutCards: string[];
+}
+
 export interface WeeklyStore {
   /** 本周各日 daily digest 的 Markdown（period 落在 [fromPeriod, toPeriod] 内，升序） */
   listDailyDigestsInRange(

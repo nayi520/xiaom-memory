@@ -90,7 +90,15 @@ export function __resetRateLimitStore(): void {
 //   限流挡住短时间狂刷（如脚本每秒打几十次）；配额挡住一整天累计刷爆成本。
 // 默认值偏宽松（够正常人手动操作），可由 env 覆盖窗口内上限（窗口长度固定 1 分钟）。
 // image=图片上传(/api/images)；ocr=图片转文字(/api/ocr，qwen-vl)。V13 新增。
-export type AiEndpoint = 'ask' | 'transcribe' | 'clip' | 'audio' | 'image' | 'ocr';
+// gen=AI 生成(/api/generate-cards、/api/study-guide)，单次较重，按分钟限频。V16 新增。
+export type AiEndpoint =
+  | 'ask'
+  | 'transcribe'
+  | 'clip'
+  | 'audio'
+  | 'image'
+  | 'ocr'
+  | 'gen';
 
 const RATE_WINDOW_MS = 60_000; // 1 分钟固定窗口
 
@@ -101,6 +109,7 @@ const RATE_CONFIG: Record<AiEndpoint, { env: string; fallback: number }> = {
   audio: { env: 'RATE_AUDIO_PER_MIN', fallback: 20 },
   image: { env: 'RATE_IMAGE_PER_MIN', fallback: 20 },
   ocr: { env: 'RATE_OCR_PER_MIN', fallback: 10 },
+  gen: { env: 'RATE_GEN_PER_MIN', fallback: 10 },
 };
 
 /** 解析某端点每分钟上限：env 有合法正整数则用之，否则用缺省。 */

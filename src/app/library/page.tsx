@@ -29,6 +29,7 @@ import { normalizeMode, runLibrarySearch, type SearchMode } from '@/features/lib
 import SearchResults from '@/features/library/components/SearchResults';
 import ConceptGraphPanel from '@/features/library/components/ConceptGraphPanel';
 import NewConceptButton from '@/features/library/components/NewConceptButton';
+import StudyGuideButton from '@/features/library/components/StudyGuideButton';
 import OnThisDay from '@/features/library/components/OnThisDay';
 import {
   PageShell,
@@ -283,6 +284,12 @@ export default async function LibraryPage({ searchParams }: Props) {
     return (
       <Shell q={q} view={view} domains={domains} activeDomain={domain} filters={filters}>
         <Breadcrumb parts={[{ label: domain }]} />
+        {/* V16：对该领域全部概念生成结构化学习指南（领域下有概念时才给入口）。 */}
+        {topics.size > 0 && (
+          <div className="mb-4">
+            <StudyGuideButton domain={domain} />
+          </div>
+        )}
         <DrillList
           empty="该领域下还没有主题"
           items={Array.from(topics.entries()).map(([t, n]) => ({

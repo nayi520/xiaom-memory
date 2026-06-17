@@ -23,6 +23,7 @@ import { profiles } from '@/lib/db/schema';
 import { excerpt } from '@/features/library/search';
 import ConceptEditor from '@/features/library/components/ConceptEditor';
 import NewCardButton from '@/features/library/components/NewCardButton';
+import GenerateCardsButton from '@/features/library/components/GenerateCardsButton';
 import FavoriteToggle from '@/features/library/components/FavoriteToggle';
 import {
   PageShell,
@@ -269,9 +270,12 @@ export default async function ConceptDetailPage({
 
       {/* 关联卡片 */}
       <section className="mt-6">
-        <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
           <SectionTitle className="mb-0">复习卡片（{(cards ?? []).length}）</SectionTitle>
-          <NewCardButton conceptId={concept.id} />
+          <div className="flex items-center gap-2">
+            <GenerateCardsButton conceptId={concept.id} />
+            <NewCardButton conceptId={concept.id} />
+          </div>
         </div>
         {(cards ?? []).length === 0 ? (
           <p className="text-sm text-zinc-400">还没有卡片。点「新建卡片」手动添加。</p>

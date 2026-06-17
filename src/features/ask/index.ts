@@ -14,11 +14,18 @@
 
 import type { Database } from '@/lib/db/client';
 import type { LlmClient } from '@/lib/llm';
-import { buildP6Prompt, type P6Turn } from '@/features/digest/prompts';
+import {
+  buildP6Prompt,
+  buildRerankPrompt,
+  GLOBAL_SYSTEM,
+  type P6Turn,
+  type RerankResult,
+} from '@/features/digest/prompts';
 import {
   retrieveConcepts,
   type RetrievedConcept,
   ASK_TOP_K,
+  ASK_RERANK_CANDIDATES,
   ASK_SIMILARITY_THRESHOLD,
 } from './retrieval';
 
@@ -145,6 +152,75 @@ export function deriveSuggestions(
   return names.map((n, i) => templates[i % templates.length](n));
 }
 
+// ============ 重排序（V16 RAG 重排，不改对外契约）============
+
+/**
+ * 构造重排序候选清单：「[1] 概念名：解释」逐行，编号 1..N 与候选数组下标 +1 对齐。
+ * 与 buildAskContext 同风格但省去关联记录摘要（重排只需概念语义，省 token）。纯函数，便于测试。
+ */
+export function buildRerankCandidates(concepts: RetrievedConcept[]): string {
+  return concepts
+    .map((c, i) => {
+      const explanation = (c.summary ?? c.noteSnippet ?? '').replace(/\s+/g, ' ').trim();
+      return `[${i + 1}] ${c.title}：${explanation || '（暂无解释）'}`;
+    })
+    .join('\n');
+}
+
+/**
+ * 把 LLM 返回的编号数组（1-based）映射回候选概念，得到重排后的子集（最多 topK 个）。
+ * 严格过滤：只接受合法范围内的整数编号、去重、忽略越界/重复，保持模型给出的顺序。纯函数。
+ * 若过滤后为空，返回空数组（由调用方决定回退到余弦顺序）。
+ */
+export function applyRerank(
+  concepts: RetrievedConcept[],
+  ranked: number[],
+  topK: number
+): RetrievedConcept[] {
+  if (!Array.isArray(ranked)) return [];
+  const seen = new Set<number>();
+  const out: RetrievedConcept[] = [];
+  for (const raw of ranked) {
+    const idx = Math.trunc(Number(raw)) - 1; // 1-based → 0-based
+    if (!Number.isInteger(idx) || idx < 0 || idx >= concepts.length) continue;
+    if (seen.has(idx)) continue;
+    seen.add(idx);
+    out.push(concepts[idx]);
+    if (out.length >= topK) break;
+  }
+  return out;
+}
+
+/**
+ * 对候选概念做一次 LLM 重排序，挑出最相关的 topK 个（顺序为相关度降序）。
+ * 失败/异常/空结果一律**回退到余弦顺序的前 topK 个**——保证质量不低于重排前的基线、绝不崩溃。
+ * 候选 ≤ topK 时无需重排，直接返回（省一次 LLM 调用）。
+ */
+async function rerankConcepts(
+  llm: LlmClient,
+  question: string,
+  candidates: RetrievedConcept[],
+  topK: number
+): Promise<RetrievedConcept[]> {
+  if (candidates.length <= topK) return candidates;
+  try {
+    const result = await llm.json<RerankResult>(
+      buildRerankPrompt({
+        question,
+        candidates: buildRerankCandidates(candidates),
+        top_n: String(topK),
+      }),
+      { model: 'haiku', task: 'P6R', system: GLOBAL_SYSTEM }
+    );
+    const reranked = applyRerank(candidates, result?.ranked ?? [], topK);
+    // 模型返回空/全非法 → 回退余弦前 topK（不因重排丢答）。
+    return reranked.length > 0 ? reranked : candidates.slice(0, topK);
+  } catch (err) {
+    console.error('[ask] 重排序失败，回退余弦顺序：', err instanceof Error ? err.message : err);
+    return candidates.slice(0, topK);
+  }
+}
+
 // ============ 主服务 ============
 
 export interface AskDeps {
@@ -158,15 +234,22 @@ export interface AskDeps {
   threshold?: number;
 }
 
-/** 召回 + 构造 sources/suggestions（流式与非流式共用） */
-async function prepareAsk(userId: string, deps: AskDeps) {
-  const concepts = await retrieveConcepts(
+/**
+ * 召回 + 重排序 + 构造 sources/suggestions（流式与非流式共用）。
+ * V16：先按余弦多召回候选（ASK_RERANK_CANDIDATES），再 LLM 重排序挑出最相关 topK，
+ * 提升上下文相关性。重排失败回退余弦顺序；对外契约（sources/suggestions 形状与编号）不变。
+ */
+async function prepareAsk(userId: string, question: string, deps: AskDeps) {
+  const topK = deps.topK ?? ASK_TOP_K;
+  const candidates = await retrieveConcepts(
     deps.db,
     userId,
     deps.questionEmbedding,
-    deps.topK ?? ASK_TOP_K,
+    // 多召回候选池（≥ topK）供重排序挑选；阈值不变（尽量多召回再筛）。
+    Math.max(topK, ASK_RERANK_CANDIDATES),
     deps.threshold ?? ASK_SIMILARITY_THRESHOLD
   );
+  const concepts = await rerankConcepts(deps.llm, question, candidates, topK);
   return {
     concepts,
     sources: toSources(concepts),
@@ -184,7 +267,7 @@ export async function answerQuestion(
   question: string,
   deps: AskDeps
 ): Promise<AskResult> {
-  const { concepts, sources, suggestions } = await prepareAsk(userId, deps);
+  const { concepts, sources, suggestions } = await prepareAsk(userId, question, deps);
 
   if (concepts.length === 0) {
     return { answer: NO_CONTEXT_ANSWER, sources: [], suggestions: [] };
@@ -216,7 +299,7 @@ export async function* answerQuestionStream(
   question: string,
   deps: AskDeps
 ): AsyncGenerator<AskStreamEvent> {
-  const { concepts, sources, suggestions } = await prepareAsk(userId, deps);
+  const { concepts, sources, suggestions } = await prepareAsk(userId, question, deps);
 
   yield { type: 'sources', sources };
 
@@ -240,5 +323,10 @@ export async function* answerQuestionStream(
   yield { type: 'done' };
 }
 
-export { retrieveConcepts, ASK_TOP_K, ASK_SIMILARITY_THRESHOLD } from './retrieval';
+export {
+  retrieveConcepts,
+  ASK_TOP_K,
+  ASK_RERANK_CANDIDATES,
+  ASK_SIMILARITY_THRESHOLD,
+} from './retrieval';
 export type { RetrievedConcept } from './retrieval';
