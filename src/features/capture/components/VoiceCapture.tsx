@@ -138,21 +138,29 @@ export default function VoiceCapture({
       failNote(temp.id, '网络错误，保存失败', retry);
       return;
     }
-    confirmNote(temp.id, note, '转写中…');
+    // 处理态分步反馈：上传(已完成) → 转写 · AI 整理中… → 完成。
+    // /api/transcribe 一次完成「ASR 转写 + P8 AI 总结」，故合并标注这一加工阶段，spinner 表「仍在加工」。
+    confirmNote(temp.id, note, '转写 · AI 整理中…');
 
-    // 3. 异步转写，不阻塞
+    // 3. 异步转写 + AI 总结（服务端一次完成），不阻塞。
     try {
       const res = await apiFetch('/api/transcribe', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ noteId: note.id }),
-        timeoutMs: LONG_TIMEOUT_MS, // 转写可能数十秒
+        timeoutMs: LONG_TIMEOUT_MS, // 转写 + 总结可能数十秒
       });
       const result = await res.json();
       if (result.transcribed) {
+        // 与详情页保持一致：AI 总结成功时正文用结构化 raw_content（🔑要点/✅待办/👥涉及），
+        // 并写入 summary 供「AI 摘要」展示；未总结（降级）时回退展示纯转写文本。
+        // transcript 始终保留原始转写（详情页「查看原始转写」折叠区用）。
         updateNote(note.id, {
           transcript: result.transcript,
-          raw_content: result.transcript,
+          raw_content: result.summarized
+            ? (result.raw_content ?? result.transcript)
+            : result.transcript,
+          summary: result.summarized ? result.summary : undefined,
           hint: undefined,
         });
       } else {

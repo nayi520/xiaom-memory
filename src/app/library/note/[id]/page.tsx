@@ -146,16 +146,20 @@ export default async function NoteDetailPage({
           <NoteAudio mediaPath={note.media_path} />
         )}
 
-        {note.type === 'voice' && note.transcript && note.raw_content && (
-          <details className="mt-3 border-t border-dashed border-zinc-200 pt-3 dark:border-zinc-700">
-            <summary className="cursor-pointer text-xs text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-300">
-              查看原始转写（未清洗）
-            </summary>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-500">
-              {note.transcript}
-            </p>
-          </details>
-        )}
+        {/* 原始转写折叠区：仅当正文是「AI 整理后的结构化内容」（与原始转写不同）时才展示，
+            避免 AI 总结降级时 raw_content 回退为转写本身、与上方正文重复两遍。 */}
+        {note.type === 'voice' &&
+          note.transcript &&
+          note.transcript.trim() !== text.trim() && (
+            <details className="mt-3 border-t border-dashed border-zinc-200 pt-3 dark:border-zinc-700">
+              <summary className="cursor-pointer text-xs text-zinc-400 transition hover:text-zinc-600 dark:hover:text-zinc-300">
+                查看原始转写（未清洗）
+              </summary>
+              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-500">
+                {note.transcript}
+              </p>
+            </details>
+          )}
       </section>
 
       {/* 为什么重要 */}

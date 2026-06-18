@@ -157,7 +157,8 @@ export default function ImageCapture({
       failNote(temp.id, '网络错误，保存失败', retry);
       return;
     }
-    confirmNote(temp.id, note, 'OCR 识别中…');
+    // 处理态分步反馈：上传(已完成) → 文字识别中… → 完成。spinner 徽标表「仍在识别」。
+    confirmNote(temp.id, note, '文字识别中…');
     setBusy(false);
 
     // 3a. 标签（可选，复用 /api/library/note-tags）—— 不阻塞、失败不影响主流程。

@@ -41,6 +41,16 @@ function isPersisted(item: RecentItem): boolean {
   return !item.pending && !item.failed && !item.queued && !item.id.startsWith('temp-');
 }
 
+/**
+ * 处理态 hint 文案判定：录入组件用 hint 既表达「后台仍在加工」（转写/识别/整理中…），
+ * 也表达「降级/待配置」（待配置/失败/超时…）。前者给「转动 spinner + sky 徽标」表示进行中，
+ * 后者保持 amber 静态徽标提示需关注。约定：进行中文案以「…」结尾且不含失败/降级关键词。
+ */
+function isProcessingHint(hint: string): boolean {
+  if (/失败|超时|待配置|未识别|无法/.test(hint)) return false;
+  return hint.endsWith('…') || hint.endsWith('...');
+}
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60000);
@@ -247,11 +257,23 @@ export default function RecentNotes({
                       已记下
                     </Badge>
                   )}
-                  {item.hint && <Badge tone="amber">{item.hint}</Badge>}
+                  {/* 后台加工进行中（转写/识别/AI 整理…）：sky 徽标 + 转动 spinner，明确「仍在加工」；
+                      降级/待配置/失败等需关注的 hint 保持 amber 静态徽标。 */}
+                  {item.hint &&
+                    !item.failed &&
+                    (isProcessingHint(item.hint) ? (
+                      <Badge tone="sky">
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70" />
+                        {item.hint}
+                      </Badge>
+                    ) : (
+                      <Badge tone="amber">{item.hint}</Badge>
+                    ))}
+                  {/* 失败：红色徽标直接带上具体原因（失败时 hint 即失败文案），避免「失败」与原因重复两枚。 */}
                   {item.failed && (
                     <Badge tone="red">
                       <FailIcon aria-hidden className="h-3 w-3" />
-                      失败
+                      {item.hint || '失败'}
                     </Badge>
                   )}
                   {item.failed && item.retry && (
