@@ -16,6 +16,8 @@ import {
   mergeHits,
   escapeIlike,
   normalizeMode,
+  tokenizeQuery,
+  splitByTerms,
   type RawHit,
 } from '../src/features/library/search';
 
@@ -137,6 +139,57 @@ console.log('7. 检索模式归一化');
   assert(normalizeMode(null) === 'hybrid', 'null → hybrid');
   assert(normalizeMode(undefined) === 'hybrid', 'undefined → hybrid');
   assert(normalizeMode('bogus') === 'hybrid', '非法值 → hybrid');
+}
+
+// ---- 8. tokenizeQuery（V22 高亮分词：去空/去重/长词优先） ----
+console.log('8. 查询分词');
+{
+  assert(tokenizeQuery('  拖延  ').join('|') === '拖延', '去首尾空白', tokenizeQuery('  拖延  ').join('|'));
+  assert(
+    tokenizeQuery('foo bar foo').join('|') === 'foo|bar',
+    '去重 + 同长保持出现序（稳定排序）',
+    tokenizeQuery('foo bar foo').join('|')
+  );
+  assert(
+    tokenizeQuery('a abc ab').join('|') === 'abc|ab|a',
+    '长词优先（abc > ab > a）',
+    tokenizeQuery('a abc ab').join('|')
+  );
+  assert(tokenizeQuery('').length === 0, '空串 → 无词');
+}
+
+// ---- 9. splitByTerms（V22 高亮分片：大小写不敏感、命中标记、长词优先不被短词截断） ----
+console.log('9. 命中词分片');
+{
+  // 基本命中：把「延」高亮出来。
+  const segs = splitByTerms('拖延症', '延');
+  assert(segs.length === 3, '切成 前/命中/后 三段', JSON.stringify(segs));
+  assert(segs[1].text === '延' && segs[1].match === true, '中段为命中');
+  assert(segs[0].match === false && segs[2].match === false, '两侧非命中');
+
+  // 大小写不敏感。
+  const ci = splitByTerms('Hello World', 'hello');
+  assert(ci[0].text === 'Hello' && ci[0].match === true, '大小写不敏感命中', JSON.stringify(ci));
+
+  // 多词：两词都高亮。
+  const multi = splitByTerms('深度工作与心流', '深度 心流');
+  const marked = multi.filter((s) => s.match).map((s) => s.text).join(',');
+  assert(marked === '深度,心流', '多词各自高亮', marked);
+
+  // 长词优先：'ab' 整体命中，不被 'a' 先吃掉。
+  const longest = splitByTerms('abc', 'a ab');
+  const lmarked = longest.filter((s) => s.match).map((s) => s.text).join(',');
+  assert(lmarked === 'ab', '长词优先匹配（ab 而非 a）', lmarked);
+
+  // 无命中 / 无词 / 空文本：返回整段或空。
+  assert(splitByTerms('无关文本', 'xyz').length === 1, '无命中 → 单段原文');
+  assert(splitByTerms('文本', '   ').length === 1, '空查询 → 单段原文');
+  assert(splitByTerms('', 'q').length === 0, '空文本 → 空数组');
+
+  // 正则元字符不应当作模式：括号查询词按字面匹配。
+  const special = splitByTerms('成本(C)很高', '(C)');
+  const smarked = special.filter((s) => s.match).map((s) => s.text).join(',');
+  assert(smarked === '(C)', '正则元字符按字面命中', smarked);
 }
 
 // ---- 汇总 ----

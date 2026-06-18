@@ -125,6 +125,11 @@ export function escapeIlike(q: string): string {
   return q.replace(/[\\%_]/g, (m) => `\\${m}`);
 }
 
+// ============ 命中词高亮（纯函数；实现见 ./highlight，无服务端依赖，便于客户端组件复用） ============
+// 从纯模块 re-export：旧引用（含 scripts/test-search.ts）与 /api 调用零改动，
+// 同时让 CommandPalette 等客户端组件能只引 ./highlight，不把 db/drizzle 拖进浏览器包。
+export { tokenizeQuery, splitByTerms, type HighlightSegment } from './highlight';
+
 export function excerpt(text: string | null | undefined, max = 80): string {
   const t = (text ?? '').replace(/\s+/g, ' ').trim();
   return t.length > max ? `${t.slice(0, max)}…` : t;

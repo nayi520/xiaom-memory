@@ -30,13 +30,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="lg:flex">
+      {/* 跳到主内容（a11y）：键盘 Tab 第一下聚焦显现，跳过侧栏直达正文。 */}
+      <a href="#main-content" className="skip-link">
+        跳到主内容
+      </a>
+
       {/* 桌面侧栏：sticky 贴顶、占满视口高度；移动端隐藏 */}
       <aside className="sticky top-0 z-30 hidden h-dvh w-[260px] shrink-0 lg:block">
         <SidebarNav />
       </aside>
 
-      {/* 内容区：占据剩余横向空间。min-w-0 避免长内容把弹性容器撑破。 */}
-      <div className="min-w-0 flex-1">{children}</div>
+      {/* 内容区：占据剩余横向空间。min-w-0 避免长内容把弹性容器撑破。
+          id + tabIndex=-1 作为「跳到主内容」锚点；内部页面的 <main>（PageShell）提供地标，
+          故此处用 div 不再加 main，避免嵌套多个 main 地标。 */}
+      <div id="main-content" tabIndex={-1} className="min-w-0 flex-1 outline-none">
+        {children}
+      </div>
     </div>
   );
 }

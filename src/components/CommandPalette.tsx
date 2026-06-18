@@ -30,6 +30,7 @@ import {
 } from '@/components/ui';
 import { PRIMARY_NAV, SECONDARY_NAV, type NavItem } from './nav-items';
 import { apiFetch } from '@/lib/api';
+import Highlight from '@/features/library/components/Highlight';
 
 // 命令面板额外入口：使用帮助（/guide）——不进常驻侧栏/底栏，但可由 ⌘K 快速到达。
 const EXTRA_NAV: NavItem[] = [{ href: '/guide', label: '使用帮助', Icon: AskIcon }];
@@ -271,6 +272,11 @@ export default function CommandPalette() {
                 }}
                 placeholder="跳转到… 或搜索概念、记录"
                 aria-label="命令或搜索"
+                role="combobox"
+                aria-expanded={rows.length > 0}
+                aria-controls="command-palette-list"
+                aria-activedescendant={rows.length > 0 ? `cmdk-opt-${active}` : undefined}
+                aria-autocomplete="list"
                 className="w-full bg-transparent py-3.5 text-[15px] text-zinc-900 outline-none placeholder:text-zinc-400 dark:text-zinc-50"
               />
               <kbd className="hidden shrink-0 rounded border border-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400 sm:block dark:border-zinc-700">
@@ -279,16 +285,23 @@ export default function CommandPalette() {
             </div>
 
             {/* 结果列表 */}
-            <ul ref={listRef} className="max-h-[min(60vh,22rem)] overflow-y-auto p-1.5">
+            <ul
+              ref={listRef}
+              id="command-palette-list"
+              role="listbox"
+              aria-label="命令与搜索结果"
+              className="max-h-[min(60vh,22rem)] overflow-y-auto p-1.5"
+            >
               {rows.length === 0 ? (
-                <li className="px-3 py-8 text-center text-sm text-zinc-400">
+                <li className="px-3 py-8 text-center text-sm text-zinc-400" role="status" aria-live="polite">
                   {searching ? '搜索中…' : query.trim() ? '没有匹配项' : '开始输入以搜索'}
                 </li>
               ) : (
                 rows.map((row, i) => (
-                  <li key={row.key}>
+                  <li key={row.key} id={`cmdk-opt-${i}`} role="option" aria-selected={i === active}>
                     <button
                       type="button"
+                      tabIndex={-1}
                       data-active={i === active}
                       onMouseMove={() => setActive(i)}
                       onClick={() => go(row.href)}
@@ -314,11 +327,15 @@ export default function CommandPalette() {
                           )}
                           <span className="min-w-0 flex-1">
                             <span className="block truncate font-medium">
-                              {row.hit.title || '（无标题）'}
+                              {row.hit.title ? (
+                                <Highlight text={row.hit.title} query={query} />
+                              ) : (
+                                '（无标题）'
+                              )}
                             </span>
                             {row.hit.snippet && (
                               <span className="block truncate text-xs text-zinc-400">
-                                {row.hit.snippet}
+                                <Highlight text={row.hit.snippet} query={query} />
                               </span>
                             )}
                           </span>

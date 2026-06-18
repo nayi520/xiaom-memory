@@ -14,6 +14,7 @@ import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownB
 import ExportAnkiButton from '@/features/settings/components/ExportAnkiButton';
 import ExportAllButton from '@/features/settings/components/ExportAllButton';
 import ImportMarkdownCard from '@/features/settings/components/ImportMarkdownCard';
+import ShortcutsHelpEntry from '@/features/settings/components/ShortcutsHelpEntry';
 import { OnboardingSettings } from '@/features/onboarding';
 import {
   PageShell,
@@ -21,6 +22,7 @@ import {
   ThemeToggle,
   TrashIcon,
   InsightsIcon,
+  AskIcon,
   ChevronRight,
   SiteFooter,
   cardClass,
@@ -29,6 +31,9 @@ import {
 
 export const metadata = { title: '设置 · 小M' };
 
+/** 展示用版本号（与 package.json 一致；改版本只改这里的展示，不影响构建）。 */
+const APP_VERSION = '0.1.0';
+
 export default function SettingsPage() {
   return (
     <PageShell width="wide">
@@ -36,152 +41,225 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold tracking-tight text-zinc-900 lg:text-3xl dark:text-zinc-50">
           设置
         </h1>
+        <p className="mt-1 text-sm text-zinc-400">账户、数据、偏好与帮助都在这里</p>
       </header>
 
-      {/* 个人资料：头像 + 显示名 + 邮箱（横跨整宽，置顶） */}
-      <section className="mb-9 space-y-2.5">
-        <SectionTitle className="mb-1">个人资料</SectionTitle>
-        <ProfileCard />
-      </section>
-
-      {/* 账户安全：自助修改 / 设置登录密码（横跨整宽） */}
-      <section className="mb-9 space-y-2.5">
-        <SectionTitle className="mb-1">账户安全</SectionTitle>
-        <ChangePasswordCard />
-      </section>
-
-      {/* 数据统计：横跨整宽（四项计数在桌面铺成一行）+ 进入洞察页入口 */}
-      <section className="space-y-2.5">
-        <SectionTitle className="mb-1">数据统计</SectionTitle>
-        <StatsPanel />
-        <Link
-          href="/insights"
-          className={cn(
-            cardClass({ interactive: true, padded: false }),
-            'group flex items-center justify-between px-4 py-4'
-          )}
-        >
-          <span className="flex items-center gap-2.5 font-medium text-zinc-800 dark:text-zinc-100">
-            <InsightsIcon aria-hidden className="h-[18px] w-[18px] text-brand" />
-            知识成长洞察
-            <span className="text-xs font-normal text-zinc-400">成长曲线 · 领域分布 · 成就 · 体检</span>
-          </span>
-          <ChevronRight
-            aria-hidden
-            className="h-4 w-4 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
-          />
-        </Link>
-      </section>
-
-      {/* 我的数据（V21 数据管理 & 掌控感）：全量备份下载 + Markdown 导入，横跨整宽。
-          各类数量见上方「数据统计」；清空入口在「记录管理 › 回收站」内。 */}
-      <section className="mt-9 space-y-2.5">
-        <SectionTitle className="mb-1">我的数据</SectionTitle>
-        <p className="max-w-prose text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-          你的记录、概念、卡片、复习记录与设置都属于你。可随时下载一份完整备份带走，或把外部 Markdown 导入小M。
-        </p>
-        <div className="grid gap-9 lg:grid-cols-2 lg:gap-x-10">
+      {/* ============ 账户：个人资料 + 账户安全 ============ */}
+      <section aria-labelledby="settings-account" className="mb-10">
+        <SectionTitle className="mb-3" id="settings-account">
+          账户
+        </SectionTitle>
+        <div className="space-y-4">
           <div className="space-y-2.5">
-            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">下载全部数据</p>
-            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-              导出当前账号的全部数据（记录正文、概念、卡片含复习状态、标签、关联、复习记录、设置）为一份 JSON 文件，可作真备份。
-            </p>
-            <ExportAllButton />
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">个人资料</p>
+            <ProfileCard />
           </div>
           <div className="space-y-2.5">
-            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">导入 Markdown</p>
-            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-              上传 .md 文件或粘贴文本，按二级标题切分为多条、或整篇作为一条记录导入，交由 AI 自动整理。
-            </p>
-            <ImportMarkdownCard />
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">账户安全</p>
+            <ChangePasswordCard />
           </div>
         </div>
       </section>
 
-      {/* 复习统计：年度热力图 + 保留率 + 今日已复习（横跨整宽） */}
-      <section className="mt-9 space-y-2.5">
-        <SectionTitle className="mb-1">复习统计</SectionTitle>
-        <ReviewHeatmap />
-      </section>
+      {/* ============ 数据与统计：统计概览 + 洞察入口 + 复习热力 + 备份/导入 ============ */}
+      <section aria-labelledby="settings-data" className="mb-10">
+        <SectionTitle className="mb-3" id="settings-data">
+          数据与统计
+        </SectionTitle>
 
-      {/* 其余设置项：桌面双栏铺开、超宽屏三栏，移动端单列堆叠（避免大屏下卡片过宽空荡） */}
-      <div className="mt-9 grid gap-9 lg:grid-cols-2 lg:gap-x-10 lg:gap-y-10 2xl:grid-cols-3">
-        <section className="space-y-2.5">
-          <SectionTitle className="mb-1">外观</SectionTitle>
-          <ThemeToggle />
-        </section>
-
-        <section className="space-y-2.5">
-          <SectionTitle className="mb-1">AI 整理</SectionTitle>
-          <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-            系统每晚 23:00（北京时间）自动整理当天记录。也可以现在手动触发。
-          </p>
-          <DigestNowButton />
-        </section>
-
-        <section className="space-y-2.5">
-          <SectionTitle className="mb-1">本周周报</SectionTitle>
-          <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-            把本周的每日整理与新概念汇总成一份知识周报。可随时手动生成、查看最新一期。
-          </p>
-          <WeeklyDigestPanel />
-        </section>
-
-        <section className="space-y-3">
-          <SectionTitle className="mb-1">复习提醒</SectionTitle>
-          <ReviewDailyGoalPicker />
-          <ReminderTimePicker />
-          <QuietHoursPicker />
-          <PushToggle />
-          <DigestEmailPicker />
-        </section>
-
-        <section className="space-y-2.5">
-          <SectionTitle className="mb-1">导出知识库</SectionTitle>
-          <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-            把整理后的概念（按领域 › 主题组织，附其下原始记录）导出为一份 Markdown 文件，方便备份或迁移。
-          </p>
-          <ExportMarkdownButton />
-          <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-            或把复习卡片导出为 Anki 可导入的 CSV（问题, 答案, 概念），在 Anki「文件 → 导入」中加载。
-          </p>
-          <ExportAnkiButton />
-        </section>
-
-        <section className="space-y-2.5">
-          <SectionTitle className="mb-1">记录管理</SectionTitle>
+        <div className="space-y-2.5">
+          <StatsPanel />
           <Link
-            href="/trash"
+            href="/insights"
             className={cn(
               cardClass({ interactive: true, padded: false }),
               'group flex items-center justify-between px-4 py-4'
             )}
           >
             <span className="flex items-center gap-2.5 font-medium text-zinc-800 dark:text-zinc-100">
-              <TrashIcon aria-hidden className="h-[18px] w-[18px] text-zinc-400 dark:text-zinc-500" />
-              回收站
+              <InsightsIcon aria-hidden className="h-[18px] w-[18px] text-brand" />
+              知识成长洞察
+              <span className="hidden text-xs font-normal text-zinc-400 sm:inline">
+                成长曲线 · 领域分布 · 成就 · 体检
+              </span>
             </span>
             <ChevronRight
               aria-hidden
               className="h-4 w-4 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
             />
           </Link>
-          <p className="text-sm leading-relaxed text-zinc-400">
-            删除的记录会先移到回收站，可恢复、永久删除单条，或一键清空整个回收站。
+        </div>
+
+        {/* 复习统计：年度热力图 + 保留率 + 今日已复习 */}
+        <div className="mt-6 space-y-2.5">
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">复习统计</p>
+          <ReviewHeatmap />
+        </div>
+
+        {/* 我的数据（V21）：全量备份下载 + Markdown 导入。各类数量见上方统计；清空入口在回收站内。 */}
+        <div className="mt-6 space-y-2.5">
+          <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">我的数据</p>
+          <p className="max-w-prose text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+            你的记录、概念、卡片、复习记录与设置都属于你。可随时下载一份完整备份带走，或把外部 Markdown 导入小M。
           </p>
-        </section>
+          <div className="grid gap-6 lg:grid-cols-2 lg:gap-x-10">
+            <div className="space-y-2.5">
+              <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">下载全部数据</p>
+              <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                导出当前账号的全部数据（记录正文、概念、卡片含复习状态、标签、关联、复习记录、设置）为一份 JSON 文件，可作真备份。
+              </p>
+              <ExportAllButton />
+            </div>
+            <div className="space-y-2.5">
+              <p className="text-sm font-medium text-zinc-600 dark:text-zinc-300">导入 Markdown</p>
+              <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                上传 .md 文件或粘贴文本，按二级标题切分为多条、或整篇作为一条记录导入，交由 AI 自动整理。
+              </p>
+              <ImportMarkdownCard />
+            </div>
+          </div>
+        </div>
+      </section>
 
-        <section className="space-y-2.5">
-          <SectionTitle className="mb-1">使用帮助</SectionTitle>
-          <OnboardingSettings />
-        </section>
-      </div>
+      {/* ============ 偏好：外观 + 复习提醒 + AI 整理 + 周报（桌面双栏 / 超宽三栏） ============ */}
+      <section aria-labelledby="settings-prefs" className="mb-10">
+        <SectionTitle className="mb-3" id="settings-prefs">
+          偏好
+        </SectionTitle>
+        <div className="grid gap-8 lg:grid-cols-2 lg:gap-x-10 lg:gap-y-9 2xl:grid-cols-3">
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">外观</p>
+            <ThemeToggle />
+          </div>
 
-      <p className="mt-12 text-center text-xs text-zinc-300 dark:text-zinc-700">
+          <div className="space-y-3">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">复习提醒</p>
+            <ReviewDailyGoalPicker />
+            <ReminderTimePicker />
+            <QuietHoursPicker />
+            <PushToggle />
+            <DigestEmailPicker />
+          </div>
+
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">AI 整理</p>
+            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+              系统每晚 23:00（北京时间）自动整理当天记录。也可以现在手动触发。
+            </p>
+            <DigestNowButton />
+          </div>
+
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">本周周报</p>
+            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+              把本周的每日整理与新概念汇总成一份知识周报。可随时手动生成、查看最新一期。
+            </p>
+            <WeeklyDigestPanel />
+          </div>
+        </div>
+      </section>
+
+      {/* ============ 导出与管理：导出知识库/Anki + 回收站 ============ */}
+      <section aria-labelledby="settings-export" className="mb-10">
+        <SectionTitle className="mb-3" id="settings-export">
+          导出与管理
+        </SectionTitle>
+        <div className="grid gap-8 lg:grid-cols-2 lg:gap-x-10">
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">导出知识库</p>
+            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+              把整理后的概念（按领域 › 主题组织，附其下原始记录）导出为一份 Markdown 文件，方便备份或迁移。
+            </p>
+            <ExportMarkdownButton />
+            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+              或把复习卡片导出为 Anki 可导入的 CSV（问题, 答案, 概念），在 Anki「文件 → 导入」中加载。
+            </p>
+            <ExportAnkiButton />
+          </div>
+
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">记录管理</p>
+            <Link
+              href="/trash"
+              className={cn(
+                cardClass({ interactive: true, padded: false }),
+                'group flex items-center justify-between px-4 py-4'
+              )}
+            >
+              <span className="flex items-center gap-2.5 font-medium text-zinc-800 dark:text-zinc-100">
+                <TrashIcon aria-hidden className="h-[18px] w-[18px] text-zinc-400 dark:text-zinc-500" />
+                回收站
+              </span>
+              <ChevronRight
+                aria-hidden
+                className="h-4 w-4 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+              />
+            </Link>
+            <p className="text-sm leading-relaxed text-zinc-400">
+              删除的记录会先移到回收站，可恢复、永久删除单条，或一键清空整个回收站。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ============ 帮助与关于：使用帮助 + 键盘快捷键 + 重看引导 + 关于/版本 ============ */}
+      <section aria-labelledby="settings-help" className="mb-6">
+        <SectionTitle className="mb-3" id="settings-help">
+          帮助与关于
+        </SectionTitle>
+        <div className="grid gap-8 lg:grid-cols-2 lg:gap-x-10">
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">使用与快捷键</p>
+            <ShortcutsHelpEntry />
+            <OnboardingSettings />
+          </div>
+
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">关于小M</p>
+            <AboutCard />
+          </div>
+        </div>
+      </section>
+
+      <p className="mt-10 text-center text-xs text-zinc-300 dark:text-zinc-700">
         小M · 你负责遇见，小M 替你记得
       </p>
       {/* ICP 备案号：设置页底部一行小字（移动端可达，不破坏底部 Tab）。 */}
       <SiteFooter variant="compact" className="mt-2" />
     </PageShell>
+  );
+}
+
+/** 关于 / 版本卡片：产品简介 + 版本号 + 法务/帮助互链（纯展示）。 */
+function AboutCard() {
+  return (
+    <div className={cn(cardClass({ padded: false }), 'overflow-hidden')}>
+      <div className="flex items-center justify-between gap-3 px-4 py-3.5">
+        <span className="flex items-center gap-2.5">
+          <AskIcon aria-hidden className="h-[18px] w-[18px] text-brand" />
+          <span className="font-semibold text-zinc-800 dark:text-zinc-100">小M Memory</span>
+        </span>
+        <span className="rounded-pill bg-zinc-100 px-2.5 py-0.5 text-xs font-medium tabular-nums text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+          v{APP_VERSION}
+        </span>
+      </div>
+      <p className="border-t border-zinc-100 px-4 py-3 text-sm leading-relaxed text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+        基于记忆曲线的个人知识记忆系统。捕获想法，AI 自动整理成概念，按遗忘曲线适时复习。
+      </p>
+      <nav
+        aria-label="关于与法务"
+        className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-zinc-100 px-4 py-3 text-sm dark:border-zinc-800"
+      >
+        <Link href="/guide" className="text-zinc-500 transition hover:text-brand dark:text-zinc-400">
+          使用帮助
+        </Link>
+        <Link href="/terms" className="text-zinc-500 transition hover:text-brand dark:text-zinc-400">
+          用户协议
+        </Link>
+        <Link href="/privacy" className="text-zinc-500 transition hover:text-brand dark:text-zinc-400">
+          隐私政策
+        </Link>
+      </nav>
+    </div>
   );
 }

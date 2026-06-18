@@ -720,6 +720,14 @@ export default function ReviewSession({
       />
       <Header progress={`${idx + 1} / ${items.length}`} combo={combo} />
 
+      {/* 读屏播报（a11y）：卡片切换 / 翻面时播报「第几张 + 问题/答案态」，
+          视觉隐藏（sr-only），不打扰视力用户。aria-live=polite 不打断当前朗读。 */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {editing
+          ? '正在编辑卡片'
+          : `第 ${idx + 1} / ${items.length} 张，${flipped ? '已显示答案，按 1 到 4 评分' : '问题，按空格翻面'}`}
+      </p>
+
       {/* 模式 / 领域切换 + 朗读开关（V14） */}
       <ModeSwitcher
         mode={mode}
@@ -999,13 +1007,15 @@ export default function ReviewSession({
               <button
                 key={r}
                 onClick={() => rate(r)}
+                aria-label={`${RATING_LABELS[r]}（快捷键 ${r}）`}
+                aria-keyshortcuts={String(r)}
                 className={cn(
                   'flex min-h-[3.25rem] flex-col items-center justify-center rounded-field border py-3 text-sm font-semibold transition duration-150 ease-smooth active:scale-95',
                   RATING_STYLES[r]
                 )}
               >
                 {RATING_LABELS[r]}
-                <span className="mt-0.5 block text-[10px] font-normal opacity-60">{r}</span>
+                <span aria-hidden className="mt-0.5 block text-[10px] font-normal opacity-60">{r}</span>
               </button>
             ))}
           </div>

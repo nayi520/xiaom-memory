@@ -27,6 +27,7 @@ import {
 } from '@/lib/db/schema';
 import { normalizeMode, runLibrarySearch, type SearchMode } from '@/features/library/search';
 import SearchResults from '@/features/library/components/SearchResults';
+import LibrarySearchBox from '@/features/library/components/LibrarySearchBox';
 import ConceptGraphPanel from '@/features/library/components/ConceptGraphPanel';
 import NewConceptButton from '@/features/library/components/NewConceptButton';
 import StudyGuideButton from '@/features/library/components/StudyGuideButton';
@@ -36,7 +37,6 @@ import {
   EmptyState,
   EmptyLibrary,
   LibraryIcon,
-  SearchIcon,
   ClockIcon,
   AskIcon,
   ChevronRight,
@@ -74,6 +74,11 @@ interface DomainSummary {
   concepts: number;
 }
 
+type TypeFilter = 'all' | 'concept' | 'note';
+function normalizeType(raw: string | undefined): TypeFilter {
+  return raw === 'concept' || raw === 'note' ? raw : 'all';
+}
+
 interface Props {
   searchParams: {
     q?: string;
@@ -82,6 +87,7 @@ interface Props {
     view?: string;
     mode?: string;
     tag?: string;
+    type?: string;
     fav?: string;
   };
 }
@@ -96,12 +102,16 @@ export default async function LibraryPage({ searchParams }: Props) {
   const favOnly = searchParams.fav === '1';
   const view = normalizeView(searchParams.view);
   const mode = normalizeMode(searchParams.mode);
+  const typeFilter = normalizeType(searchParams.type);
 
   // ---- 搜索模式（优先级最高；domain / tag 作为筛选条件，mode 选择检索路） ----
   if (q) {
     const result = user
       ? await runLibrarySearch(db, user.id, { q, domain, tag, mode })
       : { hits: [], semanticUsed: false };
+    // V22 类型筛选（概念 / 记录）：纯前端按 kind 过滤，不触碰后端检索逻辑。
+    const filteredHits =
+      typeFilter === 'all' ? result.hits : result.hits.filter((h) => h.kind === typeFilter);
     // 取领域 / 标签清单供筛选 chips（与下钻同口径：本人全部概念的去重领域、全部标签）。
     const [domainOptions, tagOptions] = user
       ? await Promise.all([listDomains(db, user.id), listTags(db, user.id)])
@@ -110,11 +120,12 @@ export default async function LibraryPage({ searchParams }: Props) {
       <Shell q={q} view={view} domains={[]} activeDomain={null}>
         <SearchResults
           q={q}
-          hits={result.hits}
+          hits={filteredHits}
           semanticUsed={result.semanticUsed}
           domain={domain}
           tag={tag}
           mode={mode}
+          type={typeFilter}
           domainOptions={domainOptions}
           tagOptions={tagOptions}
           modeLabels={MODE_LABELS}
@@ -487,21 +498,8 @@ function Shell({
       {/* 视图切换（搜索态隐藏，避免与结果筛选混淆） */}
       {!q && <ViewSwitcher view={view} />}
 
-      <form action="/library" method="get" className="mb-5 lg:max-w-xl">
-        <div className="relative">
-          <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center text-zinc-400">
-            <SearchIcon aria-hidden className="h-[18px] w-[18px]" />
-          </span>
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            placeholder="搜索概念、记录、标签…"
-            enterKeyHint="search"
-            className="w-full rounded-field border border-zinc-200 bg-white py-3 pl-11 pr-4 text-base shadow-sm outline-none transition duration-150 ease-smooth hover:border-zinc-300 focus:border-brand focus:ring-2 focus:ring-brand/20 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:border-zinc-600"
-          />
-        </div>
-      </form>
+      {/* V22 即时搜索框（防抖 as-you-type + 最近搜索）。复用既有 SSR 搜索路径 /library?q=… */}
+      <LibrarySearchBox initialQuery={q} />
 
       {/* V15 筛选 chips（收藏 / 标签）：仅 drill/tree 非搜索态 */}
       {filters}

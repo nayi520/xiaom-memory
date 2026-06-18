@@ -7,6 +7,7 @@ import { enqueue, isOfflineQueueSupported } from '@/features/offline/queue';
 import { Button, Textarea, Input, Markdown, PlusIcon, cn } from '@/components/ui';
 import { apiFetch } from '@/lib/api';
 import { useDraft } from '@/components/useDraft';
+import { FOCUS_CAPTURE_EVENT } from '@/components/shortcuts/events';
 
 /** 草稿键：未提交的捕获正文 / 为什么重要，切页或刷新都不丢。 */
 const DRAFT_CONTENT_KEY = 'mxiao.draft.capture-text';
@@ -30,6 +31,18 @@ export default function TextCapture({
   useEffect(() => {
     if (why.trim()) setShowWhy(true);
   }, [why]);
+
+  // 全局快捷键 n（GlobalShortcuts 派发 FOCUS_CAPTURE_EVENT）：聚焦正文输入框。
+  // 若当前在预览态则先切回编辑态，确保 textarea 存在可聚焦。
+  useEffect(() => {
+    function onFocusCapture() {
+      setPreview(false);
+      // 等可能的「预览→编辑」切换渲染完成后再聚焦。
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    }
+    window.addEventListener(FOCUS_CAPTURE_EVENT, onFocusCapture);
+    return () => window.removeEventListener(FOCUS_CAPTURE_EVENT, onFocusCapture);
+  }, []);
 
   /** 发一次新建请求（首次提交与「重试」共用，重试会再上屏一条新乐观占位）。 */
   async function submit(text: string, whyImportant: string | null) {

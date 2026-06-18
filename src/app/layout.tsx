@@ -4,6 +4,8 @@ import SwRegister from './sw-register';
 import BottomNav from '@/components/BottomNav';
 import AppShell from '@/components/AppShell';
 import CommandPalette from '@/components/CommandPalette';
+import GlobalShortcuts from '@/components/shortcuts/GlobalShortcuts';
+import ShortcutHelp from '@/components/shortcuts/ShortcutHelp';
 import SessionExpiredGate from '@/components/SessionExpiredGate';
 import { OfflineProvider } from '@/features/offline/OfflineProvider';
 import OfflineIndicator from '@/features/offline/OfflineIndicator';
@@ -54,6 +56,9 @@ export default function RootLayout({
               <AppShell>{children}</AppShell>
               <BottomNav />
               <CommandPalette />
+              {/* V20 全局快捷键监听 + V22 帮助浮层（? 唤起；设置页亦有入口）。 */}
+              <GlobalShortcuts />
+              <ShortcutHelp />
               <OfflineIndicator />
               <SessionExpiredGate />
               <InstallPrompt />

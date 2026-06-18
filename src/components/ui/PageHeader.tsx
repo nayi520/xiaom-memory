@@ -34,12 +34,16 @@ export default function PageHeader({
 export function SectionTitle({
   children,
   className,
+  id,
 }: {
   children: React.ReactNode;
   className?: string;
+  /** 供 aria-labelledby 关联区块（无障碍）。 */
+  id?: string;
 }) {
   return (
     <h2
+      id={id}
       className={cn(
         'mb-2.5 text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500',
         className

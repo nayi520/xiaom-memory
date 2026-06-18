@@ -157,6 +157,17 @@ body {
 }
 
 @layer components {
+  /*
+   * 跳到主内容（a11y）：默认藏在视口外，键盘 Tab 第一下即聚焦显现于左上角。
+   * 让键盘/读屏用户能跳过侧栏/底栏直达正文，不必逐个 Tab 过导航。
+   */
+  .skip-link {
+    @apply sr-only;
+  }
+  .skip-link:focus {
+    @apply not-sr-only fixed left-3 top-3 z-[100] rounded-field bg-brand px-4 py-2 text-sm font-medium text-white shadow-pop outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-zinc-50 dark:ring-offset-zinc-950;
+  }
+
   /* 骨架屏：柔和脉冲 + 流光 */
   .skeleton {
     @apply relative overflow-hidden rounded-md bg-zinc-200/70 dark:bg-zinc-800/70;
