@@ -24,7 +24,7 @@ export interface GrowthSeries {
 type SeriesKey = 'notes' | 'concepts' | 'cards';
 
 const SERIES_META: { key: SeriesKey; label: string; color: string }[] = [
-  { key: 'notes', label: '笔记', color: '#10b981' },
+  { key: 'notes', label: '记录', color: '#10b981' },
   { key: 'concepts', label: '概念', color: '#6366f1' },
   { key: 'cards', label: '卡片', color: '#f59e0b' },
 ];

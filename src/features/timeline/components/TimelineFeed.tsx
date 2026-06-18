@@ -54,7 +54,7 @@ const STATUS_BADGE: Record<
 > = {
   inbox: { tone: 'brand', label: '待整理' },
   processed: { tone: 'emerald', label: '已整理' },
-  needs_review: { tone: 'amber', label: '待处理' },
+  needs_review: { tone: 'amber', label: '整理失败' },
   archived: { tone: 'neutral', label: '已归档' },
 };
 

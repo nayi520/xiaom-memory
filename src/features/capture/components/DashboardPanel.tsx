@@ -152,7 +152,7 @@ export default function DashboardPanel({ className }: { className?: string }) {
           <StatCard
             icon={<NoteIcon aria-hidden className="h-4 w-4" />}
             value={stats?.noteCount ?? 0}
-            label="笔记"
+            label="记录"
             loading={loading}
             href="/timeline"
           />

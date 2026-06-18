@@ -81,7 +81,7 @@ export default function InsightsView() {
           </p>
         ) : (
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-6">
-            <Stat icon={<NoteIcon className="h-3.5 w-3.5" />} label="笔记" value={data?.totals.notes} loading={loading} />
+            <Stat icon={<NoteIcon className="h-3.5 w-3.5" />} label="记录" value={data?.totals.notes} loading={loading} />
             <Stat icon={<LibraryIcon className="h-3.5 w-3.5" />} label="概念" value={data?.totals.concepts} loading={loading} />
             <Stat icon={<ReviewIcon className="h-3.5 w-3.5" />} label="卡片" value={data?.totals.cards} loading={loading} />
             <Stat icon={<TrendIcon className="h-3.5 w-3.5" />} label="复习" value={data?.totals.reviews} loading={loading} />

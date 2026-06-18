@@ -7,7 +7,7 @@
 import { PageShell } from '@/components/ui';
 import AskBox from '@/features/ask/components/AskBox';
 
-export const metadata = { title: '问答 · 小M' };
+export const metadata = { title: '问知识库 · 小M' };
 
 export default function AskPage() {
   return (

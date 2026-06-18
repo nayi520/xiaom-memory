@@ -391,6 +391,8 @@ function AssistantBubble({
   registerSourcesRef: (el: HTMLDivElement | null) => void;
 }) {
   const showCursor = msg.streaming && msg.content.length === 0;
+  // 流式结束但答案为空（后端只回 done、无 token 也无 error）：给一句兜底，避免空白卡片。
+  const emptyAnswer = !msg.streaming && msg.content.trim().length === 0;
 
   if (msg.error) {
     return (
@@ -411,6 +413,8 @@ function AssistantBubble({
             <AskIcon aria-hidden className="h-4 w-4 animate-pulse" />
             正在思考…
           </p>
+        ) : emptyAnswer ? (
+          <p className="text-sm text-zinc-400">没有找到合适的答案，换个说法再问问看。</p>
         ) : (
           <>
             <AnswerMarkdown content={msg.content} onCite={onCite} />

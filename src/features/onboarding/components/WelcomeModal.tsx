@@ -118,8 +118,8 @@ export default function WelcomeModal({ onDone }: { onDone: () => void }) {
       setSampleAdded(true);
       success(
         data.created && data.created > 0
-          ? '已添加示例笔记，去首页看看吧'
-          : '示例笔记已经在你的记录里了'
+          ? '已添加示例记录，去首页看看吧'
+          : '示例记录已经在你的记录里了'
       );
     } catch (err) {
       toastError(err instanceof Error ? err.message : '添加示例失败，请稍后再试');
@@ -217,12 +217,12 @@ export default function WelcomeModal({ onDone }: { onDone: () => void }) {
             ) : (
               <>
                 <AskIcon aria-hidden className="h-4 w-4" />
-                先添加几条示例笔记
+                先添加几条示例记录
               </>
             )}
           </Button>
           <p className="text-center text-[11px] leading-relaxed text-zinc-400">
-            示例笔记清晰标注、随时可删。之后可在「设置」里重看本引导。
+            示例记录清晰标注、随时可删。之后可在「设置」里重看本引导。
           </p>
         </div>
       </div>
