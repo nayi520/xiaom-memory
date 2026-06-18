@@ -61,6 +61,9 @@ import {
   Undo2,
   Layers,
   LineChart,
+  Tag,
+  CheckSquare,
+  Square,
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
@@ -121,6 +124,9 @@ export {
   Undo2 as UndoIcon,
   Layers as CramIcon,
   LineChart as InsightsIcon,
+  Tag as TagIcon,
+  CheckSquare as CheckSquareIcon,
+  Square as SquareIcon,
 };
 
 /** 记录类型 → 图标组件（一处定义，替代各页重复的 TYPE_ICON emoji 表）。 */

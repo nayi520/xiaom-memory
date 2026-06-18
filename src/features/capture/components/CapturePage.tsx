@@ -203,14 +203,25 @@ export default function CapturePage() {
           {/* 移动端：概览（待复习 + 知识概览）+ 最近捕获，紧随捕获区之后。 */}
           <div className="mt-8 space-y-8 lg:hidden">
             <DashboardPanel />
-            <RecentNotes items={recent} onTrash={removeNote} onEdited={editNote} />
+            <RecentNotes
+              items={recent}
+              onTrash={removeNote}
+              onEdited={editNote}
+              onRestored={refreshRecent}
+            />
           </div>
         </div>
 
         {/* 桌面端：概览作为右栏常驻——待复习 / 知识概览 / 最近捕获。 */}
         <aside className="hidden space-y-6 lg:block">
           <DashboardPanel />
-          <RecentNotes items={recent} onTrash={removeNote} onEdited={editNote} keepWhenEmpty />
+          <RecentNotes
+            items={recent}
+            onTrash={removeNote}
+            onEdited={editNote}
+            onRestored={refreshRecent}
+            keepWhenEmpty
+          />
         </aside>
       </div>
     </PageShell>

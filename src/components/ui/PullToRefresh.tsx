@@ -15,12 +15,15 @@ export default function PullToRefresh({
   onRefresh,
   children,
   className,
+  /** 临时禁用下拉刷新（如进入多选态）。 */
+  disabled = false,
 }: {
   onRefresh: () => void | Promise<void>;
   children: React.ReactNode;
   className?: string;
+  disabled?: boolean;
 }) {
-  const { pull, progress, refreshing } = usePullToRefresh(onRefresh);
+  const { pull, progress, refreshing } = usePullToRefresh(onRefresh, disabled);
   const active = pull > 0 || refreshing;
 
   return (

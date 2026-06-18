@@ -20,7 +20,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RATING_LABELS, type FsrsStateJson, type ReviewRating } from '../fsrs';
 import type { ReviewMode, ReviewQueueItem } from '../types';
 import { clozeFront, clozeFull, hasCloze } from '../cloze';
+import { useReviewSession } from '../useReviewSession';
 import NoteSource from './NoteSource';
+import Celebration from './Celebration';
 import { useTts } from './useTts';
 import {
   Button,
@@ -48,6 +50,7 @@ import {
   UndoIcon,
   CramIcon,
   ClockIcon,
+  RestoreIcon,
   useToast,
   cn,
 } from '@/components/ui';
@@ -77,6 +80,8 @@ interface Props {
   reviewedToday: number;
   /** 每日复习目标（张）。 */
   dailyGoal: number;
+  /** 连续打卡天数（V20，里程碑庆祝用）；进入复习页时的快照。 */
+  streak: number;
   /** 当前复习模式（V14）：due=今日到期 / all=全部 / leech=顽固卡。 */
   mode: ReviewMode;
   /** 当前领域过滤（V14），null = 不限。 */
@@ -92,6 +97,14 @@ function buildReviewHref(mode: ReviewMode, domain: string | null): string {
   if (domain) params.set('domain', domain);
   const qs = params.toString();
   return qs ? `/review?${qs}` : '/review';
+}
+
+/** 连续打卡里程碑档位（命中其一才庆祝，避免每天都弹）。 */
+const STREAK_MILESTONES = [7, 14, 30, 60, 100, 200, 365];
+
+/** streak 是否恰为某个里程碑档位（用于庆祝触发）。 */
+function isStreakMilestone(streak: number): boolean {
+  return STREAK_MILESTONES.includes(streak);
 }
 
 /** 把下次到期 ISO 格式化成「相对人话」：今天/明天/N 天后/具体日期。 */
@@ -115,6 +128,7 @@ export default function ReviewSession({
   digestMd,
   reviewedToday,
   dailyGoal,
+  streak,
   mode,
   domain,
   domains,
@@ -155,6 +169,16 @@ export default function ReviewSession({
   const [savingEdit, setSavingEdit] = useState(false);
   const [suspending, setSuspending] = useState(false);
 
+  // 复习续做（V20）：'pending' = 检测到未完成会话、等用户选「继续/重新开始」；
+  // 'resumed' = 已恢复进度；'fresh' = 全新开始（无存档或用户选重来）。
+  const [resumeChoice, setResumeChoice] = useState<'pending' | 'resumed' | 'fresh'>('fresh');
+
+  // 达成庆祝（V20）：受控展示一次性庆祝（纸屑 + 横幅）；记下已庆祝过的「目标」与
+  // 「连击里程碑」避免重复触发（同一会话内每个里程碑只庆祝一次）。
+  const [celebration, setCelebration] = useState<{ title: string; message?: string } | null>(null);
+  const goalCelebratedRef = useRef(false);
+  const streakCelebratedRef = useRef(false);
+
   // 移动端滑动评分（V19）：翻面后左滑=忘了(1) / 右滑=记得(3)，是四档按钮的快捷补充。
   // 仅触摸屏启用；跟手位移做视觉反馈，松手超阈值则评分。
   const coarse = useCoarsePointer();
@@ -188,6 +212,88 @@ export default function ReviewSession({
   // 今日目标进度 = 进入前已复习 + 本次会话已复习。
   const goalDone = reviewedToday + reviewedCount;
   const goalPct = dailyGoal > 0 ? Math.min(100, Math.round((goalDone / dailyGoal) * 100)) : 0;
+
+  // 复习续做（V20）：持久化本次进度到 localStorage，并在挂载时检测可续做的旧会话。
+  // active：仅当用户已对续做提示做出选择（非 pending）后才开始写盘，避免空白会话覆盖存档。
+  const { resumable, clear: clearSession } = useReviewSession({
+    mode,
+    domain,
+    items,
+    idx,
+    stats,
+    graduated,
+    suspendedCount,
+    maxCombo,
+    finished,
+    active: resumeChoice !== 'pending',
+  });
+
+  // 挂载时若检测到可续做会话，先进入 pending 让用户二选一（继续 / 重新开始）。
+  // 仅运行一次（resumable 仅首屏算一次，恒定引用）。
+  useEffect(() => {
+    if (resumable) setResumeChoice('pending');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** 继续上次复习：把存档进度恢复到本地状态（队列开头即剩余卡，故 idx 从 0 起）。 */
+  const resumeSession = useCallback(() => {
+    if (!resumable) {
+      setResumeChoice('fresh');
+      return;
+    }
+    setIdx(resumable.idx);
+    setStats(resumable.stats);
+    setGraduated(resumable.graduated);
+    setSuspendedCount(resumable.suspendedCount);
+    setMaxCombo(resumable.maxCombo);
+    setFlipped(false);
+    setShowSource(false);
+    setResumeChoice('resumed');
+  }, [resumable]);
+
+  /** 重新开始：丢弃存档，从头复习（不恢复任何进度）。 */
+  const restartSession = useCallback(() => {
+    clearSession();
+    setResumeChoice('fresh');
+  }, [clearSession]);
+
+  // 达成庆祝（V20）：本次复习中达成「每日目标」或「连续打卡里程碑」时弹一次轻量庆祝。
+  // 仅在用户实际复习了至少一张后才可能触发（避免一进来就弹），且每类里程碑一会话只庆祝一次。
+  // 续做提示未决（pending）或已结束（完成/跳过页）时不触发，不打断当前流程。
+  useEffect(() => {
+    if (resumeChoice === 'pending' || finished || reviewedCount === 0) return;
+
+    // 每日目标达成（本次会话内首次越过阈值）：优先级最高，文案里捎带里程碑信息。
+    // reviewedToday < dailyGoal <= goalDone 表示「进入时还没达标、是本次复习推过了线」，
+    // 避免上次已达标、这次刚评一张就误弹。
+    if (
+      !goalCelebratedRef.current &&
+      dailyGoal > 0 &&
+      reviewedToday < dailyGoal &&
+      goalDone >= dailyGoal
+    ) {
+      goalCelebratedRef.current = true;
+      // 达标当下若也踩在连击里程碑上，合并提示、并标记 streak 已庆祝（避免再弹一次）。
+      const atStreakMilestone = isStreakMilestone(streak);
+      if (atStreakMilestone) streakCelebratedRef.current = true;
+      setCelebration({
+        title: '今日目标达成！',
+        message: atStreakMilestone
+          ? `已完成 ${goalDone} 张 · 连续打卡 ${streak} 天 🔥`
+          : `已完成 ${goalDone} 张，继续保持`,
+      });
+      return;
+    }
+
+    // 连续打卡里程碑（未达每日目标时也庆祝一次）。
+    if (!streakCelebratedRef.current && isStreakMilestone(streak)) {
+      streakCelebratedRef.current = true;
+      setCelebration({
+        title: `连续打卡 ${streak} 天 🔥`,
+        message: '坚持就是力量，今天也在变好',
+      });
+    }
+  }, [resumeChoice, finished, reviewedCount, goalDone, dailyGoal, streak]);
 
   /** 关闭编辑态并清草稿。 */
   const closeEdit = useCallback(() => {
@@ -568,11 +674,50 @@ export default function ReviewSession({
     );
   }
 
+  // ============ 续做提示（V20）：检测到未完成会话，二选一 ============
+  if (resumeChoice === 'pending' && resumable) {
+    const r = resumable;
+    const resumedCount = r.stats[1] + r.stats[2] + r.stats[3] + r.stats[4];
+    return (
+      <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-[max(1.5rem,calc(env(safe-area-inset-top)+0.5rem))] sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
+        <Header />
+        <div className="flex flex-1 flex-col justify-center">
+          <section className="animate-fade-in-up rounded-card border border-zinc-200/80 bg-white p-7 text-center shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="mx-auto mb-1 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-b from-zinc-100 to-zinc-50 shadow-card ring-1 ring-zinc-200/60 dark:from-zinc-800 dark:to-zinc-900 dark:ring-zinc-700/60">
+              <ReviewIcon aria-hidden className="h-8 w-8 text-brand" />
+            </div>
+            <p className="mt-3 text-lg font-semibold">继续上次复习？</p>
+            <p className="mt-1 text-sm text-zinc-400">
+              你上次中途离开了，已复习 {resumedCount} 张、还剩 {items.length} 张。
+            </p>
+            <div className="mt-6 grid gap-2.5 sm:grid-cols-2">
+              <Button size="lg" fullWidth onClick={resumeSession}>
+                <ReviewIcon aria-hidden className="h-4 w-4" />
+                继续上次复习
+              </Button>
+              <Button variant="secondary" size="lg" fullWidth onClick={restartSession}>
+                <RestoreIcon aria-hidden className="h-4 w-4" />
+                重新开始
+              </Button>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
+
   // ============ 复习中 ============
   const progressPct = Math.round((idx / items.length) * 100);
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-content flex-col px-4 pb-28 pt-[max(1.5rem,calc(env(safe-area-inset-top)+0.5rem))] sm:px-6 sm:pt-10 lg:max-w-reading lg:px-10 lg:pb-12 lg:pt-12">
+      {/* 达成庆祝（V20）：达标/里程碑时一次性轻量庆祝，不打断复习 */}
+      <Celebration
+        show={celebration !== null}
+        title={celebration?.title ?? ''}
+        message={celebration?.message}
+        onDone={() => setCelebration(null)}
+      />
       <Header progress={`${idx + 1} / ${items.length}`} combo={combo} />
 
       {/* 模式 / 领域切换 + 朗读开关（V14） */}

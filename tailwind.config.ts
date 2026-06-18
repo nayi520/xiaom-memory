@@ -80,6 +80,21 @@ const config: Config = {
           from: { transform: 'translateY(100%)' },
           to: { transform: 'translateY(0)' },
         },
+        // 复习达成庆祝（V20）：纸屑下落 + 旋转 + 渐隐；x 漂移/旋角由每片 CSS 变量提供。
+        'confetti-fall': {
+          '0%': { transform: 'translate3d(0,0,0) rotate(0deg)', opacity: '1' },
+          '100%': {
+            transform:
+              'translate3d(var(--confetti-dx, 0), var(--confetti-dy, 70vh), 0) rotate(var(--confetti-rot, 540deg))',
+            opacity: '0',
+          },
+        },
+        // 达成对勾脉冲（V20）：轻微放大回弹，给「达标」一个即时反馈。
+        'celebrate-pop': {
+          '0%': { transform: 'scale(0.6)', opacity: '0' },
+          '55%': { transform: 'scale(1.12)', opacity: '1' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.25s var(--ease-smooth, ease) both',
@@ -87,6 +102,9 @@ const config: Config = {
         'scale-in': 'scale-in 0.18s var(--ease-smooth, ease) both',
         'flip-in': 'flip-in 0.22s var(--ease-smooth, ease) both',
         'sheet-up': 'sheet-up 0.28s var(--ease-smooth, ease) both',
+        // both + forwards：动画结束停在末态（纸屑保持透明，避免回闪）。
+        'confetti-fall': 'confetti-fall var(--confetti-dur, 1.6s) var(--ease-smooth, ease-out) var(--confetti-delay, 0s) forwards',
+        'celebrate-pop': 'celebrate-pop 0.45s var(--ease-smooth, ease) both',
       },
     },
   },

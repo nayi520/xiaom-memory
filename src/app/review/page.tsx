@@ -1,16 +1,18 @@
-import { and, asc, eq, gte, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import {
   cards as cardsTable,
   concepts as conceptsTable,
   digests as digestsTable,
+  notes as notesTable,
   profiles as profilesTable,
   reviews as reviewsTable,
 } from '@/lib/db/schema';
 import { dayWindow } from '@/features/digest/pipeline';
 import { getReviewQueue } from '@/features/review/queue';
 import type { ReviewMode } from '@/features/review/types';
+import { computeStreak } from '@/features/stats';
 import ReviewSession from '@/features/review/components/ReviewSession';
 
 export const dynamic = 'force-dynamic';
@@ -63,6 +65,7 @@ export default async function ReviewPage({
         digestMd={null}
         reviewedToday={0}
         dailyGoal={DEFAULT_REVIEW_DAILY_GOAL}
+        streak={0}
         mode={mode}
         domain={domain}
         domains={[]}
@@ -76,7 +79,7 @@ export default async function ReviewPage({
   // 今日 daily digest（完成页展示）、今日已复习数（目标进度用）、每日目标（设置）、领域选项。
   // 今日已复习：reviews.reviewed_at 落在「今天 UTC 日历日」内，归属经 cards→concepts.user_id。
   const todayUtcStart = sql`date_trunc('day', now() at time zone 'UTC') at time zone 'UTC'`;
-  const [digestRows, reviewedRows, settingsRows, domainRows] = await Promise.all([
+  const [digestRows, reviewedRows, settingsRows, domainRows, streakDayRows] = await Promise.all([
     db
       .select({ content_md: digestsTable.contentMd })
       .from(digestsTable)
@@ -105,11 +108,21 @@ export default async function ReviewPage({
       .from(conceptsTable)
       .where(and(eq(conceptsTable.userId, user.id), isNotNull(conceptsTable.domain)))
       .orderBy(asc(conceptsTable.domain)),
+    // 连续记录天数（庆祝里程碑用）：未软删记录的 distinct UTC 日历日，与 /api/stats 同口径。
+    db
+      .selectDistinct({
+        day: sql<string>`to_char(${notesTable.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`,
+      })
+      .from(notesTable)
+      .where(and(eq(notesTable.userId, user.id), isNull(notesTable.deletedAt))),
   ]);
 
   const domains = domainRows
     .map((r) => r.domain)
     .filter((d): d is string => typeof d === 'string' && d.trim().length > 0);
+
+  // 连续打卡天数（按 notes 的 UTC 日历日连续计数，今日/昨日有记录才延续）。
+  const streak = computeStreak(streakDayRows.map((r) => r.day));
 
   return (
     <ReviewSession
@@ -118,6 +131,7 @@ export default async function ReviewPage({
       digestMd={digestRows[0]?.content_md ?? null}
       reviewedToday={reviewedRows[0]?.n ?? 0}
       dailyGoal={resolveReviewDailyGoal(settingsRows[0]?.settings)}
+      streak={streak}
       mode={mode}
       domain={domain}
       domains={domains}

@@ -40,7 +40,7 @@ export {
 export * from './icons';
 
 // Toast 反馈体系
-export { ToastProvider, useToast, type ToastOptions } from './Toast';
+export { ToastProvider, useToast, type ToastOptions, type ToastAction } from './Toast';
 
 // 外观偏好（深浅色三态 + 主题色 + 字号）
 export {

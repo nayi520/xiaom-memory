@@ -29,17 +29,28 @@ import type { LucideIcon } from './icons';
 
 type ToastVariant = 'success' | 'error' | 'info';
 
+/** Toast 行内动作（如「已删除 · 撤销」）：点击后执行回调并自动关闭该条。 */
+export interface ToastAction {
+  /** 按钮文案（如「撤销」）。 */
+  label: string;
+  /** 点击回调（执行后该 toast 自动关闭）。 */
+  onClick: () => void;
+}
+
 export interface ToastOptions {
   /** 视觉/语义变体，决定图标与配色。默认 info。 */
   variant?: ToastVariant;
   /** 持续毫秒；不传按变体取默认（error 5s，其余 3s）。设 0 表示不自动消失。 */
   duration?: number;
+  /** 可选行内动作按钮（撤销等）；含动作时默认延长展示时长，给用户反应时间。 */
+  action?: ToastAction;
 }
 
 interface ToastItem extends Required<Pick<ToastOptions, 'variant'>> {
   id: number;
   message: string;
   duration: number;
+  action?: ToastAction;
 }
 
 interface ToastApi {
@@ -57,6 +68,8 @@ const ToastContext = createContext<ToastApi | null>(null);
 const MAX_TOASTS = 3;
 const DEFAULT_DURATION = 3000;
 const ERROR_DURATION = 5000;
+/** 含撤销等行内动作时的默认展示时长（更长，给用户反应/点击的时间）。 */
+const ACTION_DURATION = 6000;
 
 const VARIANT_META: Record<
   ToastVariant,
@@ -81,9 +94,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       const variant = options?.variant ?? 'info';
       const duration =
         options?.duration ??
-        (variant === 'error' ? ERROR_DURATION : DEFAULT_DURATION);
+        (options?.action
+          ? ACTION_DURATION
+          : variant === 'error'
+            ? ERROR_DURATION
+            : DEFAULT_DURATION);
       setItems((prev) =>
-        [...prev, { id, message, variant, duration }].slice(-MAX_TOASTS)
+        [...prev, { id, message, variant, duration, action: options?.action }].slice(
+          -MAX_TOASTS
+        )
       );
       return id;
     },
@@ -169,6 +188,18 @@ function ToastCard({
       <p className="min-w-0 flex-1 break-words text-sm leading-relaxed text-zinc-700 dark:text-zinc-100">
         {item.message}
       </p>
+      {item.action && (
+        <button
+          type="button"
+          onClick={() => {
+            item.action?.onClick();
+            onDismiss(item.id);
+          }}
+          className="-my-0.5 shrink-0 self-center rounded-md px-2 py-1 text-sm font-semibold text-brand transition hover:bg-brand/10 focus-visible:outline-none dark:hover:bg-brand/15"
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={() => onDismiss(item.id)}

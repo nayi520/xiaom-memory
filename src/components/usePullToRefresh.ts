@@ -20,7 +20,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 const THRESHOLD = 64; // 触发刷新的下拉距离（px）
 const MAX_PULL = 96; // 指示器最大下移（px）
 
-export function usePullToRefresh(onRefresh: () => void | Promise<void>) {
+export function usePullToRefresh(
+  onRefresh: () => void | Promise<void>,
+  /** 临时禁用（如进入多选态，避免与长按/勾选手势冲突）。 */
+  disabled = false
+) {
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const startY = useRef<number | null>(null);
@@ -30,6 +34,7 @@ export function usePullToRefresh(onRefresh: () => void | Promise<void>) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    if (disabled) return;
     if (!window.matchMedia('(pointer: coarse)').matches) return;
 
     const atTop = () =>
@@ -92,7 +97,7 @@ export function usePullToRefresh(onRefresh: () => void | Promise<void>) {
       window.removeEventListener('touchend', onEnd);
       window.removeEventListener('touchcancel', onEnd);
     };
-  }, [pull, refreshing]);
+  }, [pull, refreshing, disabled]);
 
   /** 进度（0~1），用于指示器旋转 / 透明度。 */
   const progress = Math.min(1, pull / THRESHOLD);
