@@ -11,6 +11,8 @@ import {
 } from '@/lib/asr/funasr';
 import { enforceAiRateLimit } from '@/lib/ratelimit';
 import { consumeQuota } from '@/lib/quota';
+import { createAnthropicClient } from '@/lib/llm';
+import { summarizeTranscript, type SummarizeStore } from '@/features/digest/summarize';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -105,7 +107,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '转写结果保存失败' }, { status: 500 });
     }
 
-    return NextResponse.json({ transcribed: true, transcript: text });
+    // P8：转写成功后即时 AI 加工（摘要 + 关键要点 + 待办 + 涉及）→ 写回 summary / raw_content。
+    // transcript 保持原始不动（供每晚 P7 清洗 / P1 概念抽取）；LLM 不可用/缺 key 时优雅降级，仅保留转写。
+    const summaryStore: SummarizeStore = {
+      async updateSummary(id, uid, patch) {
+        const rows = await db
+          .update(notes)
+          .set({ summary: patch.summary, rawContent: patch.rawContent })
+          .where(and(eq(notes.id, id), eq(notes.userId, uid)))
+          .returning({ id: notes.id });
+        return rows.length > 0;
+      },
+    };
+    const sum = await summarizeTranscript(noteId, user.id, text, {
+      llm: createAnthropicClient(),
+      store: summaryStore,
+    });
+
+    return NextResponse.json({
+      transcribed: true,
+      transcript: text,
+      summarized: sum.ok,
+      summary: sum.ok ? sum.summary : undefined,
+      raw_content: sum.ok ? sum.rawContent : undefined,
+    });
   } catch (err) {
     if (err instanceof AsrKeyMissingError) {
       // 优雅降级：未配置 DASHSCOPE_API_KEY 时不报错，提示待配置。

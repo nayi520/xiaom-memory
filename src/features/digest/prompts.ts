@@ -423,6 +423,48 @@ export function buildRerankPrompt(vars: RerankVars): string {
   return inject(RERANK_TEMPLATE, { ...vars });
 }
 
+// ============ P8 语音转写后总结 + 关键信息提取（V21） ============
+// 模型建议：Haiku（fast 档）｜ 触发：转写成功后即时（/api/transcribe 顺带 或 /api/notes/[id]/summarize）
+// 输出 JSON：摘要 + 关键要点 + （若有）待办 + （若有）涉及的人/事/时间。
+// 与 P1 区别：P1 是每晚批处理的结构化整理（含分类/标签/概念，落 summary 字段）；
+//   P8 是**转写当下**的即时加工，把要点/待办组织进 raw_content 的 Markdown，给用户立刻可读的反馈。
+
+const P8_TEMPLATE = `以下是一段语音速记的自动转写，可能有口语赘词、错别字、标点缺失。
+请基于转写内容，提炼出对用户有用的结构化信息。
+
+<转写原文>
+{{transcript}}
+</转写原文>
+
+请输出 JSON（必须是合法 JSON，不要输出任何其他文字）：
+{
+  "summary": "2-3 句话的摘要，说清这段语音讲了什么、重点是什么（简体中文，通顺书面语）",
+  "key_points": ["关键要点，名词短语或短句，3-6 条，宁缺毋滥；纯寒暄/无信息量时可为空数组"],
+  "todos": ["明确的待办 / 行动项（如"周五前给张三回邮件"），没有就空数组"],
+  "entities": ["提到的具体的人 / 事 / 时间 / 地点等（如"张三"、"下周三"、"杭州出差"），没有就空数组"]
+}
+
+规则：
+- 只依据转写内容，不要编造原文里没有的信息；不确定就不写。
+- summary 必填且非空（哪怕转写很短，也用一句话概括）；其余三个数组按实际有无填，可为空数组。
+- 待办只收"要去做的事"，单纯的陈述/感想不算待办。
+- 全部用简体中文。`;
+
+export interface P8Vars {
+  transcript: string;
+}
+
+export interface P8Result {
+  summary: string;
+  key_points: string[];
+  todos: string[];
+  entities: string[];
+}
+
+export function buildP8Prompt(vars: P8Vars): string {
+  return inject(P8_TEMPLATE, { ...vars });
+}
+
 // ============ P7 语音转写后清洗 ============
 // 模型建议：Haiku ｜ 触发：Whisper 转写之后、P1 之前 ｜ 输出纯文本
 
