@@ -64,6 +64,9 @@ import {
   Tag,
   CheckSquare,
   Square,
+  Download,
+  Upload,
+  Database,
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
@@ -127,6 +130,9 @@ export {
   Tag as TagIcon,
   CheckSquare as CheckSquareIcon,
   Square as SquareIcon,
+  Download as DownloadIcon,
+  Upload as UploadIcon,
+  Database as DatabaseIcon,
 };
 
 /** 记录类型 → 图标组件（一处定义，替代各页重复的 TYPE_ICON emoji 表）。 */

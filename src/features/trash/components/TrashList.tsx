@@ -19,6 +19,7 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import TrashItemActions from './TrashItemActions';
+import EmptyTrashButton from './EmptyTrashButton';
 import { apiFetch } from '@/lib/api';
 import {
   useSelection,
@@ -182,7 +183,7 @@ export default function TrashList({ initialItems }: { initialItems: TrashedNote[
     async (id: string) => {
       removeOptimistic(id);
       try {
-        const res = await apiFetch(`/api/notes/${id}`, { method: 'DELETE' });
+        const res = await apiFetch(`/api/notes/${id}?permanent=1`, { method: 'DELETE' });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           rollback(id);
@@ -245,6 +246,16 @@ export default function TrashList({ initialItems }: { initialItems: TrashedNote[
 
   return (
     <>
+      {/* 清空回收站（强二次确认）：非选择态、有条目时展示。清空成功后整列清空。 */}
+      {!selection.active && (
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-zinc-400">
+            共 {items.length} 条
+          </p>
+          <EmptyTrashButton count={items.length} onCleared={() => setItems([])} />
+        </div>
+      )}
+
       <ul className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
         {items.map((note) => (
           <li key={note.id} className="animate-fade-in">

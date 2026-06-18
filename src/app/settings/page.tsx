@@ -12,6 +12,8 @@ import ProfileCard from '@/features/settings/components/ProfileCard';
 import ChangePasswordCard from '@/features/settings/components/ChangePasswordCard';
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
 import ExportAnkiButton from '@/features/settings/components/ExportAnkiButton';
+import ExportAllButton from '@/features/settings/components/ExportAllButton';
+import ImportMarkdownCard from '@/features/settings/components/ImportMarkdownCard';
 import { OnboardingSettings } from '@/features/onboarding';
 import {
   PageShell,
@@ -69,6 +71,31 @@ export default function SettingsPage() {
             className="h-4 w-4 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
           />
         </Link>
+      </section>
+
+      {/* 我的数据（V21 数据管理 & 掌控感）：全量备份下载 + Markdown 导入，横跨整宽。
+          各类数量见上方「数据统计」；清空入口在「记录管理 › 回收站」内。 */}
+      <section className="mt-9 space-y-2.5">
+        <SectionTitle className="mb-1">我的数据</SectionTitle>
+        <p className="max-w-prose text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+          你的记录、概念、卡片、复习记录与设置都属于你。可随时下载一份完整备份带走，或把外部 Markdown 导入小M。
+        </p>
+        <div className="grid gap-9 lg:grid-cols-2 lg:gap-x-10">
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">下载全部数据</p>
+            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+              导出当前账号的全部数据（记录正文、概念、卡片含复习状态、标签、关联、复习记录、设置）为一份 JSON 文件，可作真备份。
+            </p>
+            <ExportAllButton />
+          </div>
+          <div className="space-y-2.5">
+            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">导入 Markdown</p>
+            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+              上传 .md 文件或粘贴文本，按二级标题切分为多条、或整篇作为一条记录导入，交由 AI 自动整理。
+            </p>
+            <ImportMarkdownCard />
+          </div>
+        </div>
       </section>
 
       {/* 复习统计：年度热力图 + 保留率 + 今日已复习（横跨整宽） */}
@@ -140,7 +167,7 @@ export default function SettingsPage() {
             />
           </Link>
           <p className="text-sm leading-relaxed text-zinc-400">
-            删除的记录会先移到回收站，可恢复或永久删除。
+            删除的记录会先移到回收站，可恢复、永久删除单条，或一键清空整个回收站。
           </p>
         </section>
 

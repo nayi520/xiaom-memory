@@ -62,7 +62,7 @@ export default function TrashItemActions({
     setBusy('purge');
     onOptimisticRemove(); // 乐观：先移除
     try {
-      const res = await apiFetch(`/api/notes/${noteId}`, { method: 'DELETE' });
+      const res = await apiFetch(`/api/notes/${noteId}?permanent=1`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         onRollback();

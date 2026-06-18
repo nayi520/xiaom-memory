@@ -6,7 +6,8 @@
  * 不新增任何后端端点：
  *  - 打标签：GET /api/library/note-tags 读当前标签 → 与新标签并集 → POST 整体替换（避免误清空已有标签）。
  *  - 软删 / 恢复：PATCH /api/notes/[id] { action: 'trash' | 'restore' }。
- *  - 永久删除：DELETE /api/notes/[id]（回收站批量永久删除用，二次确认在 UI 层）。
+ *  - 永久删除：DELETE /api/notes/[id]?permanent=1（回收站批量永久删除用，二次确认在 UI 层；
+ *    后端仅对已软删记录生效、严格按 user_id 归属校验）。
  *
  * 每个函数失败即抛出（带友好文案），由 runBatch 记为失败计数。撤销同样复用 trash/restore 反向调用。
  */
@@ -39,9 +40,9 @@ export async function restoreNote(id: string): Promise<void> {
   }
 }
 
-/** 永久删除一条（不可逆；回收站批量永久删除用）。 */
+/** 永久删除一条（不可逆；回收站批量永久删除用）。仅对已软删记录生效（后端严格校验）。 */
 export async function purgeNote(id: string): Promise<void> {
-  const res = await apiFetch(`/api/notes/${id}`, { method: 'DELETE' });
+  const res = await apiFetch(`/api/notes/${id}?permanent=1`, { method: 'DELETE' });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error((data as { error?: string }).error ?? `永久删除失败（${res.status}）`);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { notes } from '@/lib/db/schema';
@@ -17,10 +17,13 @@ export const dynamic = 'force-dynamic';
  *     - 更新正文 raw_content 与/或 why_important（最近捕获列表里就地改）。
  *     - 至少要给一个可编辑字段，否则 400。返回更新后的 note。
  *
- * DELETE /api/notes/[id]
+ * DELETE /api/notes/[id]   （可带 ?permanent=1，语义不变，仅为 iOS / 显式调用更直观）
  *   - 永久删除：硬删 notes 行本身。note_concepts / note_tags 经外键
  *     on delete cascade 自动清理关联。**派生的 concepts / cards 不删**——
  *     它们可能被其他 note 共享，且是知识库的原子单位，永久删除只清记录本身。
+ *   - **严格归属 + 仅对已软删记录生效**（V21）：只能永久删除自己的、且已在回收站
+ *     （deleted_at 非空）的记录。活动记录不能被本端点直接抹除——必须先软删进回收站，
+ *     避免误触一步抹掉在用数据；OSS 媒体对象（media_path）暂留，待后续统一清理。
  *
  * 去 Supabase 改造：鉴权改 getCurrentUser()，授权改应用层——
  * 所有 notes 操作显式按 user_id 过滤（原靠 RLS 保证只能操作自己的记录）。
@@ -150,14 +153,31 @@ export async function DELETE(
   }
 
   const db = getDb();
-  // 永久删除：硬删 note 行本身（显式按 user_id 过滤）。
+  // 永久删除：硬删 note 行本身。在 id 命中之外再加两道归属/状态约束：
+  //   1) eq(userId) —— 只能删自己的（严格归属）；
+  //   2) isNotNull(deletedAt) —— 仅已软删（回收站）记录可被永久抹除，活动记录受保护。
+  // returning 用于判断是否真的删到了行。
   // note_concepts / note_tags 外键 on delete cascade 自动清关联；
   // 派生的 concepts / cards 可能被其他记录共享，保留不删。
   const deleted = await db
     .delete(notes)
-    .where(and(eq(notes.id, noteId), eq(notes.userId, user.id)))
+    .where(
+      and(eq(notes.id, noteId), eq(notes.userId, user.id), isNotNull(notes.deletedAt))
+    )
     .returning({ id: notes.id });
   if (deleted.length === 0) {
+    // 区分「确实不存在/非本人」与「存在但未在回收站」——后者给 409，提示先移入回收站。
+    const exists = await db
+      .select({ id: notes.id })
+      .from(notes)
+      .where(and(eq(notes.id, noteId), eq(notes.userId, user.id)))
+      .limit(1);
+    if (exists.length > 0) {
+      return NextResponse.json(
+        { error: '只能永久删除回收站里的记录，请先移入回收站' },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: '记录不存在' }, { status: 404 });
   }
 
