@@ -18,7 +18,22 @@ Fun-ASR 录音文件转写模块（百炼 · 录音文件异步识别）。**纯
 | `MEMORY_FUNASR_POLL_INTERVAL_MS` | 否 | `3000` | 轮询间隔（毫秒）。 |
 | `MEMORY_FUNASR_TIMEOUT_MS` | 否 | `300000`（5min） | 轮询总超时（毫秒），超时抛 `AsrTimeoutError`。 |
 
-> `.env.example` 现有的 `OPENAI_API_KEY`（Whisper 用）在本模块**不需要**；接线阶段把 transcribe 切到 Fun-ASR 后，Whisper/`OPENAI_API_KEY` 可一并退役。
+> `.env.example` 现有的 `OPENAI_API_KEY` 在 Fun-ASR 默认路径**不需要**；它现作为多供应商（OpenAI/Whisper 等）的兜底 key。
+
+## 多供应商 ASR（可选，默认 Fun-ASR）
+
+转写默认走 Fun-ASR（本目录 `funasr.ts`），`/api/transcribe` 直接调用它，**默认行为不变**。
+
+`whisper.ts` 为「可配 ASR provider」预留 **OpenAI Whisper（whisper-1）** 的接口位：
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `ASR_PROVIDER` | `funasr` | `whisper` 切到 Whisper；缺省/其它值均为 funasr。 |
+| `WHISPER_API_KEY` | 回落 `OPENAI_API_KEY` | 缺则 `transcribeAudioUrl` 抛 `AsrKeyMissingError` → 调用入口优雅降级。 |
+| `WHISPER_BASE_URL` | `https://api.openai.com/v1` | OpenAI 兼容根端点。 |
+| `WHISPER_MODEL` | `whisper-1` | 转写模型。 |
+
+`whisper.ts` 导出与 `funasr.ts` **同签名同返回** 的 `transcribeAudioUrl`，并复用 `funasr.ts` 的错误类（`AsrKeyMissingError`/`AsrTranscribeError`），故 transcribe 入口将来按 `resolveAsrProvider()` 分发时，`instanceof` 降级判断无需改动。骨架已实现「下载 OSS 音频 → multipart 上传 → 解析文本」，但**默认不被任何调用方启用**，接入前请在 staging 验证音频体积/超时（见 `whisper.ts` 顶部 TODO）。
 
 ## 接口端点（参考）
 

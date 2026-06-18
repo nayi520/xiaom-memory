@@ -1,46 +1,58 @@
 /**
- * LLM 统一封装层（去 Supabase 改造：DashScope 通义千问 · OpenAI 兼容接口）
+ * LLM 统一封装层（多供应商：DashScope 通义千问 / DeepSeek / OpenAI / Moonshot / 智谱 / custom · OpenAI 兼容接口）
  *
  * 约定：所有 LLM 调用必须经过本文件，统一做重试 / 日志 / 成本统计。
  * - json()：JSON 解析失败自动重试 1 次（附错误说明），再失败抛 LlmJsonError，由调用方标记 needs_review
  * - 每次调用的 token 消耗通过 logUsage 回调记录（默认 console）
- * - DASHSCOPE_API_KEY 缺失时抛 LlmKeyMissingError，调用入口负责返回明确错误，不崩溃
+ * - 当前 provider 的 API Key 缺失时抛 LlmKeyMissingError，调用入口负责返回明确错误，不崩溃
  *
- * 迁移说明（原 Anthropic → 通义千问）：
- * - 走 DashScope OpenAI 兼容端点（base_url + /chat/completions），仅换 base_url / key / 模型名。
- * - **导出函数签名保持不变**（createAnthropicClient / buildLlmClient / parseJsonLoose 等），
- *   digest pipeline 等调用方零改动。模型层 tier 仍是 'haiku' / 'sonnet'，但映射到 Qwen 模型。
+ * 多供应商（env `LLM_PROVIDER`，默认 dashscope；见 src/lib/providers.ts）：
+ * - 所有 provider 均走 OpenAI 兼容端点（base_url + /chat/completions），仅换 base_url / key / 模型名。
+ * - **默认 DashScope 行为像素级不变**：不填新 env 时 base_url / 模型名 / key env（DASHSCOPE_API_KEY）
+ *   与改造前逐字一致；既有覆盖（MEMORY_QWEN_PLUS/MAX、DASHSCOPE_BASE_URL）继续生效。
+ * - **导出函数/类型签名保持不变**（createAnthropicClient / buildLlmClient / parseJsonLoose /
+ *   CLAUDE_MODELS / ClaudeModelTier / QWEN_VL_MODEL 等），digest pipeline 等调用方与测试零改动。
+ *   模型层 tier 仍是 'haiku'(fast) / 'sonnet'(strong)，映射到当前 provider 的两档模型。
  * - JSON 输出用 response_format:{type:'json_object'}（仅 json() 路径，text() 输出 Markdown 不设）。
- *   通义不支持 json_schema，故约束字段示例写在 prompt 内（见 features/digest/prompts.ts）；
- *   且兼容接口要求消息中含 "JSON" 字样（GLOBAL_SYSTEM 与各 prompt 已满足）。
+ *   兼容端点要求消息中含 "JSON" 字样（GLOBAL_SYSTEM 与各 prompt 已满足）。
  * - **不设 max_tokens**（防止长 JSON / Markdown 被截断）。
  */
 
-// ============ 模型常量（可通过环境变量覆盖） ============
-// tier 名沿用 'haiku' / 'sonnet' 以保持调用方与测试不变；值映射到通义千问模型：
-//   - haiku  → 主力 qwen-plus（P1 整理 / P2 制卡 / P4 日报 / P7 语音清洗）
-//   - sonnet → 质量敏感 qwen-max（P3 关联确认，需要更强判断力）
+import {
+  resolveLlmProvider,
+  resolveVisionProvider,
+  type LlmProviderConfig,
+} from './providers';
+
+// ============ 模型常量（tier → 当前 provider 模型，env 可覆盖） ============
+// tier 名沿用 'haiku'(fast) / 'sonnet'(strong) 以保持调用方与测试不变；
+// 值在模块加载时由当前 provider 解析（默认 DashScope：haiku→qwen-plus、sonnet→qwen-max）：
+//   - haiku  → 主力/fast 档（P1 整理 / P2 制卡 / P4 日报 / P7 语音清洗）
+//   - sonnet → 质量敏感/strong 档（P3 关联确认，需要更强判断力）
+// 说明：仅是「tier→模型名」的对外快照，实际请求每次 resolveLlmProvider() 取最新配置，
+//       以便测试 / 运行时改 env 后即时生效，且保持与 DashScope 缺省逐字一致。
+const _llmCfgAtLoad = resolveLlmProvider();
 export const CLAUDE_MODELS = {
-  /** P1 整理 / P2 制卡 / P4 日报 / P7 语音清洗 —— 主力 qwen-plus */
-  haiku: process.env.MEMORY_QWEN_PLUS ?? process.env.MEMORY_CLAUDE_HAIKU ?? 'qwen-plus',
-  /** P3 关联确认（需要更强的判断力）—— qwen-max */
-  sonnet: process.env.MEMORY_QWEN_MAX ?? process.env.MEMORY_CLAUDE_SONNET ?? 'qwen-max',
+  /** P1 整理 / P2 制卡 / P4 日报 / P7 语音清洗 —— fast 档 */
+  haiku: _llmCfgAtLoad.models.fast,
+  /** P3 关联确认（需要更强的判断力）—— strong 档 */
+  sonnet: _llmCfgAtLoad.models.strong,
 } as const;
 
 export type ClaudeModelTier = keyof typeof CLAUDE_MODELS;
 
-/**
- * 图片 OCR 多模态模型（V13 图片捕获 · qwen-vl 系列）。
- * 走同一 DashScope OpenAI 兼容 /chat/completions 端点，消息 content 用「图文混排数组」
- *（{type:'image_url'} + {type:'text'}）。默认 qwen-vl-plus，可经 env 覆盖（如 qwen-vl-max）。
- */
-export const QWEN_VL_MODEL =
-  process.env.MEMORY_QWEN_VL ?? 'qwen-vl-plus';
+/** tier → 当前 provider 的实际模型名（每次取最新 env 配置）。 */
+function modelForTier(cfg: LlmProviderConfig, tier: ClaudeModelTier): string {
+  return tier === 'sonnet' ? cfg.models.strong : cfg.models.fast;
+}
 
-/** DashScope OpenAI 兼容端点（base_url） */
-const DASHSCOPE_BASE_URL =
-  process.env.DASHSCOPE_BASE_URL ?? 'https://dashscope.aliyuncs.com/compatible-mode/v1';
-const DASHSCOPE_CHAT_URL = `${DASHSCOPE_BASE_URL}/chat/completions`;
+/**
+ * 图片 OCR 多模态模型（V13 图片捕获）。
+ * 默认 DashScope qwen-vl-plus（MEMORY_QWEN_VL 可覆盖）；VISION_PROVIDER=openai 时为 gpt-4o（vision）。
+ * 走 OpenAI 兼容 /chat/completions 端点，消息 content 用「图文混排数组」（{type:'image_url'} + {type:'text'}）。
+ * 导出为对外快照（加载时解析）；实际请求每次取最新 resolveVisionProvider()。
+ */
+export const QWEN_VL_MODEL = resolveVisionProvider().model;
 
 // ============ 错误类型 ============
 
@@ -188,8 +200,9 @@ export function buildLlmClient(
 }
 
 /**
- * 创建基于 DashScope（通义千问 · OpenAI 兼容）的 LlmClient。
- * 名称沿用 createAnthropicClient 以保持调用方不变（src/app/api/**），内部已切到通义千问。
+ * 创建当前 provider（默认 DashScope · OpenAI 兼容）的 LlmClient。
+ * 名称沿用 createAnthropicClient 以保持调用方不变（src/app/api/**）；
+ * provider 由 env LLM_PROVIDER 决定（默认 dashscope，逐字保旧行为），见 src/lib/providers.ts。
  */
 export function createAnthropicClient(options?: { logUsage?: UsageLogger }): LlmClient {
   const logUsage: UsageLogger =
@@ -199,9 +212,13 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
         `[llm] task=${u.task} model=${u.model} in=${u.inputTokens} out=${u.outputTokens}`
       ));
 
-  // 构造 DashScope 请求体（complete / stream 共用）。
-  function buildRequestBody(prompt: string, opts: LlmCallOpts): Record<string, unknown> {
-    const model = CLAUDE_MODELS[opts.model];
+  // 构造请求体（complete / stream 共用）。模型名来自当前 provider 配置。
+  function buildRequestBody(
+    cfg: LlmProviderConfig,
+    prompt: string,
+    opts: LlmCallOpts
+  ): Record<string, unknown> {
+    const model = modelForTier(cfg, opts.model);
     // OpenAI 兼容消息：system（可选）+ user。json() 路径已确保 prompt/system 含 "JSON" 字样。
     const messages: { role: 'system' | 'user'; content: string }[] = [];
     if (opts.system) messages.push({ role: 'system', content: opts.system });
@@ -216,16 +233,16 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
   }
 
   const complete: TextCompletionFn = async (prompt, opts) => {
-    const apiKey = process.env.DASHSCOPE_API_KEY;
-    if (!apiKey) throw new LlmKeyMissingError();
+    const cfg = resolveLlmProvider();
+    if (!cfg.apiKey) throw new LlmKeyMissingError(cfg.apiKeyEnv);
 
-    const model = CLAUDE_MODELS[opts.model];
-    const body = buildRequestBody(prompt, opts);
+    const model = modelForTier(cfg, opts.model);
+    const body = buildRequestBody(cfg, prompt, opts);
 
-    const res = await fetch(DASHSCOPE_CHAT_URL, {
+    const res = await fetch(cfg.chatUrl, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${cfg.apiKey}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
@@ -234,7 +251,7 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
     if (!res.ok) {
       const detail = await res.text();
       throw new Error(
-        `DashScope API ${res.status}（task=${opts.task}）：${detail.slice(0, 300)}`
+        `LLM API(${cfg.provider}) ${res.status}（task=${opts.task}）：${detail.slice(0, 300)}`
       );
     }
 
@@ -259,25 +276,25 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
     return text;
   };
 
-  // 流式补全：DashScope OpenAI 兼容 SSE（stream:true），逐 chunk 透传 delta.content。
+  // 流式补全：OpenAI 兼容 SSE（stream:true），逐 chunk 透传 delta.content。
   // 每行 `data: {json}`，以 `data: [DONE]` 结束；用量在 stream_options 末帧回报（best-effort 记录）。
   const stream: StreamCompletionFn = (prompt, opts) =>
     (async function* () {
-      const apiKey = process.env.DASHSCOPE_API_KEY;
-      if (!apiKey) throw new LlmKeyMissingError();
+      const cfg = resolveLlmProvider();
+      if (!cfg.apiKey) throw new LlmKeyMissingError(cfg.apiKeyEnv);
 
-      const model = CLAUDE_MODELS[opts.model];
+      const model = modelForTier(cfg, opts.model);
       const body = {
-        ...buildRequestBody(prompt, opts),
+        ...buildRequestBody(cfg, prompt, opts),
         stream: true,
         // 让末帧带 usage，便于成本统计（兼容端点支持；不支持则忽略，不影响透传）。
         stream_options: { include_usage: true },
       };
 
-      const res = await fetch(DASHSCOPE_CHAT_URL, {
+      const res = await fetch(cfg.chatUrl, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${apiKey}`,
+          Authorization: `Bearer ${cfg.apiKey}`,
           'content-type': 'application/json',
           accept: 'text/event-stream',
         },
@@ -287,7 +304,7 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
       if (!res.ok || !res.body) {
         const detail = res.body ? await res.text() : '';
         throw new Error(
-          `DashScope API ${res.status}（task=${opts.task}，stream）：${detail.slice(0, 300)}`
+          `LLM API(${cfg.provider}) ${res.status}（task=${opts.task}，stream）：${detail.slice(0, 300)}`
         );
       }
 
@@ -346,7 +363,7 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
   return buildLlmClient(complete, stream);
 }
 
-// ============ 图片 OCR（V13 图片捕获 · qwen-vl 多模态） ============
+// ============ 图片 OCR（V13 图片捕获 · 视觉多模态，默认 qwen-vl） ============
 
 /** OCR 默认提示词：忠实抽取图片中的文字，不臆造、不翻译、不解读。 */
 const OCR_PROMPT_DEFAULT =
@@ -364,23 +381,24 @@ export interface OcrOpts {
 }
 
 /**
- * 用 qwen-vl 多模态模型对一张「公网可访问的图片 URL」做 OCR（图片转文字），返回整段文本。
+ * 用视觉多模态模型对一张「公网可访问的图片 URL」做 OCR（图片转文字），返回整段文本。
  *
+ * provider 由 env VISION_PROVIDER 决定（默认 dashscope qwen-vl-plus；可设 openai gpt-4o），见 src/lib/providers.ts。
  * 形态对齐 transcribe/funasr：调用方先把图片落 OSS 并拿到签名 URL，再把 URL 交给本函数；
- * 走 DashScope OpenAI 兼容 /chat/completions，单条 user 消息的 content 为「图文混排数组」。
+ * 走 OpenAI 兼容 /chat/completions，单条 user 消息的 content 为「图文混排数组」（OpenAI/DashScope 一致）。
  *
  * @param imageUrl 公网可访问的图片 URL（http/https；调用方用 OSS 签名 URL）
  * @param opts     提示词 / 任务名 / 用量回调（可选）
  * @returns        { text } OCR 出的纯文本（可能为空串——纯图无字时由调用方决定如何呈现）
- * @throws LlmKeyMissingError 未配置 DASHSCOPE_API_KEY（调用入口应据此优雅降级）
+ * @throws LlmKeyMissingError 未配置当前 vision provider 的 API Key（调用入口应据此优雅降级）
  * @throws LlmVisionError     提交失败 / HTTP 错误 / 返回异常
  */
 export async function ocrImageUrl(
   imageUrl: string,
   opts: OcrOpts = {}
 ): Promise<{ text: string }> {
-  const apiKey = process.env.DASHSCOPE_API_KEY;
-  if (!apiKey) throw new LlmKeyMissingError();
+  const cfg = resolveVisionProvider();
+  if (!cfg.apiKey) throw new LlmKeyMissingError(cfg.apiKeyEnv);
 
   if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) {
     throw new LlmVisionError(
@@ -399,7 +417,7 @@ export async function ocrImageUrl(
 
   // OpenAI 兼容多模态消息：单条 user，content 为图文数组（图在前、文在后）。
   const body = {
-    model: QWEN_VL_MODEL,
+    model: cfg.model,
     messages: [
       {
         role: 'user',
@@ -413,24 +431,24 @@ export async function ocrImageUrl(
 
   let res: Response;
   try {
-    res = await fetch(DASHSCOPE_CHAT_URL, {
+    res = await fetch(cfg.chatUrl, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${cfg.apiKey}`,
         'content-type': 'application/json',
       },
       body: JSON.stringify(body),
     });
   } catch (err) {
     throw new LlmVisionError(
-      `qwen-vl 请求网络错误（task=${task}）：${err instanceof Error ? err.message : String(err)}`
+      `视觉模型(${cfg.provider}) 请求网络错误（task=${task}）：${err instanceof Error ? err.message : String(err)}`
     );
   }
 
   if (!res.ok) {
     const detail = await res.text();
     throw new LlmVisionError(
-      `DashScope（qwen-vl）API ${res.status}（task=${task}）：${detail.slice(0, 300)}`
+      `视觉模型(${cfg.provider}) API ${res.status}（task=${task}）：${detail.slice(0, 300)}`
     );
   }
 
@@ -442,7 +460,7 @@ export async function ocrImageUrl(
   try {
     await logUsage({
       task,
-      model: QWEN_VL_MODEL,
+      model: cfg.model,
       inputTokens: data.usage?.prompt_tokens ?? 0,
       outputTokens: data.usage?.completion_tokens ?? 0,
     });
@@ -450,7 +468,7 @@ export async function ocrImageUrl(
     console.error('[llm] OCR usage 日志写入失败：', err);
   }
 
-  // qwen-vl 兼容端点的 content 通常是字符串；个别版本可能回图文数组，做兜底拼接。
+  // 兼容端点的 content 通常是字符串；个别版本可能回图文数组，做兜底拼接。
   const raw = data.choices?.[0]?.message?.content;
   let text = '';
   if (typeof raw === 'string') {
