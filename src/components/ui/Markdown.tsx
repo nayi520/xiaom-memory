@@ -3,9 +3,10 @@
 /**
  * Markdown 渲染（笔记正文 rawContent / 概念解释 summary 等）。
  *
- * 用 react-markdown 渲染，默认安全：
+ * 用 react-markdown + remark-gfm 渲染，默认安全：
  *   - 不启用 raw HTML（不挂 rehype-raw），不使用 dangerouslySetInnerHTML，杜绝 XSS。
- *   - 仅渲染标准 Markdown（标题/列表/引用/代码/链接/强调/表格-GFM 需额外插件，这里不引）。
+ *   - 启用 GFM：表格 / 任务清单（- [ ] / - [x]）/ 删除线 / 裸链接自动识别——
+ *     AI 输出（如 P8 语音待办用 `- [ ]`、学习指南/周报偶发表格）才能正确渲染，不再露出原始符号。
  * 样式：项目未装 @tailwindcss/typography（无 prose），逐元素映射 Tailwind 类，
  * 与现有设计（zinc 文本 / brand 链接）对齐，深浅色自适应。
  *
@@ -13,6 +14,7 @@
  */
 
 import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from './cn';
 
 const components: Components = {
@@ -51,7 +53,49 @@ const components: Components = {
   ol: ({ children }) => (
     <ol className="my-2 ml-5 list-decimal space-y-1 marker:text-zinc-400">{children}</ol>
   ),
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  // GFM 任务清单项（- [ ] / - [x]）：含 checkbox 时去掉 list 圆点、复选框与文字基线对齐。
+  li: ({ children, className }) => {
+    const isTask = (className ?? '').includes('task-list-item');
+    return (
+      <li className={cn('leading-relaxed', isTask && 'flex list-none items-start gap-2 -ml-5')}>
+        {children}
+      </li>
+    );
+  },
+  // 任务清单复选框：只读展示（disabled），用 brand 强调色，禁止误操作。
+  input: ({ type, checked }) =>
+    type === 'checkbox' ? (
+      <input
+        type="checkbox"
+        checked={!!checked}
+        readOnly
+        disabled
+        className="mt-1 h-3.5 w-3.5 shrink-0 cursor-default rounded border-zinc-300 accent-brand dark:border-zinc-600"
+      />
+    ) : null,
+  del: ({ children }) => (
+    <del className="text-zinc-400 line-through dark:text-zinc-500">{children}</del>
+  ),
+  // GFM 表格：可横向滚动的容器 + 细分隔线，深浅色自适应；表头浅底加粗。
+  table: ({ children }) => (
+    <div className="my-3 overflow-x-auto">
+      <table className="w-full border-collapse text-sm">{children}</table>
+    </div>
+  ),
+  thead: ({ children }) => (
+    <thead className="border-b border-zinc-300 dark:border-zinc-600">{children}</thead>
+  ),
+  tr: ({ children }) => (
+    <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">{children}</tr>
+  ),
+  th: ({ children }) => (
+    <th className="px-3 py-2 text-left font-semibold text-zinc-700 dark:text-zinc-200">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="px-3 py-2 align-top text-zinc-600 dark:text-zinc-300">{children}</td>
+  ),
   blockquote: ({ children }) => (
     <blockquote className="my-2 border-l-2 border-zinc-300 pl-3 italic text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">
       {children}
@@ -124,7 +168,9 @@ export default function Markdown({
   if (!text) return null;
   return (
     <div className={cn('break-words text-zinc-800 dark:text-zinc-100', className)}>
-      <ReactMarkdown components={components}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }

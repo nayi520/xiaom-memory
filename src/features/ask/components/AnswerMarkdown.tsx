@@ -3,13 +3,14 @@
 /**
  * 问答答案渲染：Markdown + 可点击 [n] 角标引用（V9）。
  *
- * 与通用 ui/Markdown 同一套 Tailwind 元素样式（深浅色自适应、无 raw HTML、防 XSS），
- * 额外在所有文本叶子里把 `[n]`（n 为数字）替换为可点击角标：点击触发 onCite(n)，
- * 由上层滚动/跳转到对应来源概念。流式途中可反复重渲染（每帧追加 token 后重绘）。
+ * 与通用 ui/Markdown 同一套 Tailwind 元素样式（深浅色自适应、无 raw HTML、防 XSS）+ remark-gfm
+ *（表格 / 任务清单 / 删除线 / 裸链接），额外在所有文本叶子里把 `[n]`（n 为数字）替换为可点击角标：
+ * 点击触发 onCite(n)，由上层滚动/跳转到对应来源概念。流式途中可反复重渲染（每帧追加 token 后重绘）。
  */
 
 import { Fragment, type ReactNode } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/components/ui';
 
 /** 把一段纯文本里的 [n] 拆成「文本 + 可点击角标」节点；非 [n] 原样返回。 */
@@ -93,7 +94,46 @@ function makeComponents(onCite?: (n: number) => void): Components {
     ol: ({ children }) => (
       <ol className="my-2 ml-5 list-decimal space-y-1 marker:text-zinc-400">{children}</ol>
     ),
-    li: ({ children }) => <li className="leading-relaxed">{L(children)}</li>,
+    li: ({ children, className }) => {
+      const isTask = (className ?? '').includes('task-list-item');
+      return (
+        <li className={cn('leading-relaxed', isTask && 'flex list-none items-start gap-2 -ml-5')}>
+          {L(children)}
+        </li>
+      );
+    },
+    input: ({ type, checked }) =>
+      type === 'checkbox' ? (
+        <input
+          type="checkbox"
+          checked={!!checked}
+          readOnly
+          disabled
+          className="mt-1 h-3.5 w-3.5 shrink-0 cursor-default rounded border-zinc-300 accent-brand dark:border-zinc-600"
+        />
+      ) : null,
+    del: ({ children }) => (
+      <del className="text-zinc-400 line-through dark:text-zinc-500">{L(children)}</del>
+    ),
+    table: ({ children }) => (
+      <div className="my-3 overflow-x-auto">
+        <table className="w-full border-collapse text-sm">{children}</table>
+      </div>
+    ),
+    thead: ({ children }) => (
+      <thead className="border-b border-zinc-300 dark:border-zinc-600">{children}</thead>
+    ),
+    tr: ({ children }) => (
+      <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800">{children}</tr>
+    ),
+    th: ({ children }) => (
+      <th className="px-3 py-2 text-left font-semibold text-zinc-700 dark:text-zinc-200">
+        {L(children)}
+      </th>
+    ),
+    td: ({ children }) => (
+      <td className="px-3 py-2 align-top text-zinc-600 dark:text-zinc-300">{L(children)}</td>
+    ),
     blockquote: ({ children }) => (
       <blockquote className="my-2 border-l-2 border-zinc-300 pl-3 italic text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">
         {children}
@@ -132,7 +172,9 @@ export default function AnswerMarkdown({
   if (!text) return null;
   return (
     <div className={cn('break-words text-zinc-800 dark:text-zinc-100', className)}>
-      <ReactMarkdown components={makeComponents(onCite)}>{text}</ReactMarkdown>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={makeComponents(onCite)}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
