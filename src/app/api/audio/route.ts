@@ -6,16 +6,18 @@ import { enforceAiRateLimit } from '@/lib/ratelimit';
 // 上传走 ali-oss（Node SDK），需 Node runtime；音频可能较大 → 关闭 body 缓存、放宽时长。
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// 会议录音（长音频）可达数十 MB，上传 + 落 OSS 较久 → 放宽时长。
+export const maxDuration = 300;
 
 /**
- * 音频上传大小硬上限：默认 5MB，可由 env MAX_AUDIO_BYTES 覆盖。
- * 录音 3 分钟内（opus/webm）远低于此；上限防超大上传打爆带宽/存储/后续转写。
+ * 音频上传大小硬上限：默认 100MB，可由 env MAX_AUDIO_BYTES 覆盖。
+ * 支持会议记录的长录音（约 1 小时，opus/m4a 低码率下约数十 MB）；上限防超大上传打爆带宽/存储/后续转写。
+ * 自托管（standalone Node，非 serverless）可读大 body，按需经 env 进一步调大/调小。
  */
 const MAX_AUDIO_BYTES = (() => {
   const raw = process.env.MAX_AUDIO_BYTES;
   const n = raw ? Number(raw) : NaN;
-  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 5 * 1024 * 1024;
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 100 * 1024 * 1024;
 })();
 
 /**

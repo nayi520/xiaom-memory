@@ -176,6 +176,84 @@ export async function transcribeAudioUrl(
   return { text };
 }
 
+// ============ 异步分步接口（会议记录 / 长音频：提交即返回，状态另查） ============
+//
+// transcribeAudioUrl 是「提交+轮询+取文本」的同步封装，受 serverless 时长所限只适合短音频。
+// 会议/长音频改用下面三段式：submitTranscription（存 task_id 即返回）→ checkTranscription（查一次）
+// → fetchTranscriptText（done 时取整段文本）。轮询/兜底由调用方（status 路由 + cron）负责。
+
+/** checkTranscription 的归一化返回：pending=仍在跑；done=可取文本；failed=失败。 */
+export interface TranscriptionStatus {
+  status: 'pending' | 'done' | 'failed';
+  /** done 时指向结果 JSON 文件的公网 URL（交给 fetchTranscriptText 取文本）。 */
+  transcriptionUrl?: string;
+  /** failed / 异常时的人类可读说明。 */
+  message?: string;
+}
+
+/**
+ * 提交一个异步转写任务，立即返回 task_id（不等待结果）。
+ * @throws AsrKeyMissingError 未配置 DASHSCOPE_API_KEY（调用入口据此优雅降级）
+ * @throws AsrTranscribeError URL 非法 / 提交失败
+ */
+export async function submitTranscription(
+  audioUrl: string,
+  opts: TranscribeOpts = {}
+): Promise<string> {
+  const apiKey = process.env.DASHSCOPE_API_KEY;
+  if (!apiKey) throw new AsrKeyMissingError();
+  if (!audioUrl || !/^https?:\/\//i.test(audioUrl)) {
+    throw new AsrTranscribeError(
+      `Fun-ASR 需要公网可访问的音频 URL（http/https），收到：${String(audioUrl).slice(0, 120)}`
+    );
+  }
+  return submitTask(apiKey, audioUrl, opts);
+}
+
+/**
+ * 查询一次任务状态（单次，不循环）。归一化为 pending/done/failed：
+ * PENDING/RUNNING → pending；SUCCEEDED → done(+transcriptionUrl)；FAILED/CANCELED → failed。
+ * 网络抖动 / 5xx → 视为 pending（交调用方下次再查），不误判失败。
+ * @throws AsrKeyMissingError 未配置 DASHSCOPE_API_KEY
+ */
+export async function checkTranscription(taskId: string): Promise<TranscriptionStatus> {
+  const apiKey = process.env.DASHSCOPE_API_KEY;
+  if (!apiKey) throw new AsrKeyMissingError();
+
+  let res: Response;
+  try {
+    res = await fetch(TASK_URL(taskId), { method: 'GET', headers: authHeaders(apiKey) });
+  } catch (err) {
+    return {
+      status: 'pending',
+      message: `查询网络错误：${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  if (!res.ok) {
+    const detail = await res.text();
+    if (res.status >= 500) return { status: 'pending', message: `查询 HTTP ${res.status}` };
+    return { status: 'failed', message: `查询失败 HTTP ${res.status}：${detail.slice(0, 200)}` };
+  }
+
+  const data = (await res.json()) as DashScopeTaskEnvelope;
+  const st = data.output?.task_status;
+  if (st === 'SUCCEEDED') {
+    try {
+      return { status: 'done', transcriptionUrl: extractTranscriptionUrl(data, taskId) };
+    } catch (err) {
+      return { status: 'failed', message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  if (st === 'FAILED' || st === 'CANCELED') {
+    const reason = data.output?.message ?? data.output?.code ?? data.message ?? '未知原因';
+    return {
+      status: 'failed',
+      message: `任务${st === 'CANCELED' ? '被取消' : '失败'}：${reason}`,
+    };
+  }
+  return { status: 'pending' };
+}
+
 /** 1) 提交异步任务，返回 task_id */
 async function submitTask(
   apiKey: string,
@@ -303,7 +381,7 @@ function extractTranscriptionUrl(data: DashScopeTaskEnvelope, taskId: string): s
 }
 
 /** 3) 拉取 transcription_url 指向的结果文件并拼出整段文本 */
-async function fetchTranscriptText(transcriptionUrl: string): Promise<string> {
+export async function fetchTranscriptText(transcriptionUrl: string): Promise<string> {
   let res: Response;
   try {
     res = await fetch(transcriptionUrl, { method: 'GET' });

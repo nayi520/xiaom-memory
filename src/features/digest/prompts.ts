@@ -465,6 +465,58 @@ export function buildP8Prompt(vars: P8Vars): string {
   return inject(P8_TEMPLATE, { ...vars });
 }
 
+// ============ P8M 会议纪要（长录音 / 会议记录）============
+// 模型建议：Sonnet（qwen-max，长转写更需要结构化能力）｜ 触发：异步转写完成且转写较长（判为会议）
+// 与 P8 区别：P8 是短语音的轻量要点；P8M 把长会议整理成「摘要 / 参会人 / 议题讨论 / 决议 / 待办 / 关键信息 / 下一步」会议纪要。
+
+const MEETING_TEMPLATE = `以下是一段会议录音的自动转写，可能有口语赘词、错别字、标点缺失、多位发言人混杂。
+请基于转写内容，整理成一份结构清晰、可直接存档的会议纪要。
+
+<会议转写原文>
+{{transcript}}
+</会议转写原文>
+
+请输出 JSON（必须是合法 JSON，不要输出任何其他文字）：
+{
+  "title": "为这次会议拟一个简短标题（≤20 字，概括主题）",
+  "summary": "3-5 句话的会议摘要：开了什么会、核心议题、主要结论（简体中文、通顺书面语）",
+  "attendees": ["能从转写中辨认出的参会人 / 发言人姓名或角色，辨认不出就空数组，不要编造"],
+  "topics": [
+    { "topic": "议题名（短）", "points": ["该议题下的讨论要点 / 观点 / 分歧，1-N 条"] }
+  ],
+  "decisions": ["明确达成的决议 / 结论，没有就空数组"],
+  "todos": ["行动项，尽量含负责人与期限，如「周五前张三给出方案」；没有就空数组"],
+  "key_info": ["值得记住的关键信息 / 数据 / 数字 / 金额 / 时间节点等，没有就空数组"],
+  "next_steps": ["后续安排 / 下一步 / 下次会议时间，没有就空数组"]
+}
+
+规则：
+- 只依据转写内容，不要编造原文里没有的信息；不确定就不写或保留原话。
+- summary 必填且非空；其余字段按实际有无填，可为空数组。
+- topics 按讨论到的议题归类要点；若难以分议题，可用一个「总体讨论」议题收纳全部要点。
+- 待办只收「要去做的事」，能识别出负责人 / 期限就带上。
+- 全部用简体中文。`;
+
+export interface MeetingTopic {
+  topic: string;
+  points: string[];
+}
+
+export interface MeetingResult {
+  title?: string;
+  summary: string;
+  attendees: string[];
+  topics: MeetingTopic[];
+  decisions: string[];
+  todos: string[];
+  key_info: string[];
+  next_steps: string[];
+}
+
+export function buildMeetingPrompt(vars: { transcript: string }): string {
+  return inject(MEETING_TEMPLATE, { ...vars });
+}
+
 // ============ P7 语音转写后清洗 ============
 // 模型建议：Haiku ｜ 触发：Whisper 转写之后、P1 之前 ｜ 输出纯文本
 

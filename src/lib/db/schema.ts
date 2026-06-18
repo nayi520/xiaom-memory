@@ -148,6 +148,10 @@ export const notes = pgTable(
     whyImportant: text('why_important'),
     status: text('status').notNull().default('inbox'),
     summary: text('summary'),
+    // 异步转写（会议记录 / 长音频）：transcribe_status ∈ transcribing/done/failed（短同步路径可空）；
+    // transcribe_task_id = Fun-ASR 异步任务号，供 status 路由 + cron 兜底查询完成。
+    transcribeStatus: text('transcribe_status'),
+    transcribeTaskId: text('transcribe_task_id'),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()

@@ -15,7 +15,22 @@
  */
 
 import type { LlmClient } from '@/lib/llm';
-import { GLOBAL_SYSTEM, buildP8Prompt, type P8Result } from './prompts';
+import {
+  GLOBAL_SYSTEM,
+  buildP8Prompt,
+  type P8Result,
+  buildMeetingPrompt,
+  type MeetingResult,
+} from './prompts';
+
+/**
+ * 转写长度阈值：超过则判定为「会议记录」，走会议纪要格式（议题/决议/待办/参会人/关键信息）；
+ * 以下走轻量 P8（要点/待办/涉及）。可经 env 覆盖。纯按长度判定 → 零额外存储、对短语音无影响。
+ */
+const MEETING_MIN_CHARS = (() => {
+  const n = Number(process.env.MEMORY_MEETING_MIN_CHARS);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 800;
+})();
 
 /** 把 P8 结构化结果 + 转写原文组织成 note.raw_content 的 Markdown（清晰分节）。 */
 export function buildSummaryMarkdown(_transcript: string, p8: P8Result): string {
@@ -36,6 +51,59 @@ export function buildSummaryMarkdown(_transcript: string, p8: P8Result): string 
   const entities = (p8.entities ?? []).map((s) => s.trim()).filter(Boolean);
   if (entities.length > 0) {
     sections.push(`## 👥 涉及的人 / 事 / 时间\n\n${entities.map((e) => `- ${e}`).join('\n')}`);
+  }
+
+  return sections.join('\n\n');
+}
+
+/**
+ * 把会议纪要结构化结果组织成 note.raw_content 的 Markdown（清晰分节）。
+ * 同 P8：整体摘要存 note.summary（详情页「AI 摘要」单独展示）、原始转写存 note.transcript
+ *（详情页折叠区），故此处只组织「参会人 / 议题 / 决议 / 待办 / 关键信息 / 下一步」，避免重复渲染。
+ */
+export function buildMeetingMarkdown(m: MeetingResult): string {
+  const sections: string[] = [];
+  const clean = (arr?: string[]) => (arr ?? []).map((s) => s.trim()).filter(Boolean);
+
+  const attendees = clean(m.attendees);
+  if (attendees.length > 0) {
+    sections.push(`## 👥 参会人\n\n${attendees.join('、')}`);
+  }
+
+  const topics = (m.topics ?? []).filter(
+    (t) => t && (t.topic?.trim() || clean(t.points).length > 0)
+  );
+  if (topics.length > 0) {
+    const block = topics
+      .map((t) => {
+        const pts = clean(t.points)
+          .map((p) => `- ${p}`)
+          .join('\n');
+        const head = `### ${t.topic?.trim() || '讨论'}`;
+        return pts ? `${head}\n\n${pts}` : head;
+      })
+      .join('\n\n');
+    sections.push(`## 🗂 议题与讨论\n\n${block}`);
+  }
+
+  const decisions = clean(m.decisions);
+  if (decisions.length > 0) {
+    sections.push(`## ✅ 决议事项\n\n${decisions.map((d) => `- ${d}`).join('\n')}`);
+  }
+
+  const todos = clean(m.todos);
+  if (todos.length > 0) {
+    sections.push(`## 📌 待办 / 行动项\n\n${todos.map((t) => `- [ ] ${t}`).join('\n')}`);
+  }
+
+  const keyInfo = clean(m.key_info);
+  if (keyInfo.length > 0) {
+    sections.push(`## 🔑 关键信息\n\n${keyInfo.map((k) => `- ${k}`).join('\n')}`);
+  }
+
+  const next = clean(m.next_steps);
+  if (next.length > 0) {
+    sections.push(`## ➡️ 下一步\n\n${next.map((n) => `- ${n}`).join('\n')}`);
   }
 
   return sections.join('\n\n');
@@ -88,28 +156,42 @@ export async function summarizeTranscript(
     return { ok: false, message: '没有可用于总结的转写文本' };
   }
 
-  let p8: P8Result;
+  // 按转写长度分流：长（会议）→ 会议纪要（P8M，qwen-max）；短（速记）→ 轻量 P8（qwen-plus）。
+  const isMeeting = text.length >= MEETING_MIN_CHARS;
+
+  let summary: string;
+  let rawContent: string;
   try {
-    p8 = await deps.llm.json<P8Result>(buildP8Prompt({ transcript: text }), {
-      model: 'haiku', // fast 档（配 DeepSeek 即 deepseek-chat），与 P1/P7 同档
-      task: 'P8',
-      system: GLOBAL_SYSTEM,
-    });
+    if (isMeeting) {
+      const m = await deps.llm.json<MeetingResult>(buildMeetingPrompt({ transcript: text }), {
+        model: 'sonnet', // 长转写更需结构化能力，用 qwen-max
+        task: 'P8M',
+        system: GLOBAL_SYSTEM,
+      });
+      summary = (m.summary ?? '').trim();
+      if (!summary) {
+        return { ok: false, message: 'AI 总结未产出摘要，已保留转写' };
+      }
+      // 结构化为空时回退保留转写，避免清空 raw_content（流水线/搜索仍可读）。
+      rawContent = buildMeetingMarkdown(m) || text;
+    } else {
+      const p8 = await deps.llm.json<P8Result>(buildP8Prompt({ transcript: text }), {
+        model: 'haiku', // fast 档（配 DeepSeek 即 deepseek-chat），与 P1/P7 同档
+        task: 'P8',
+        system: GLOBAL_SYSTEM,
+      });
+      summary = (p8.summary ?? '').trim();
+      if (!summary) {
+        return { ok: false, message: 'AI 总结未产出摘要，已保留转写' };
+      }
+      rawContent = buildSummaryMarkdown(text, p8) || text;
+    }
   } catch (err) {
     // 缺 key / HTTP / JSON 解析重试后仍失败：降级——不报错，保留转写。
     const message = err instanceof Error ? err.message : String(err);
     console.error('[P8] 转写总结失败（降级，保留转写）：', message);
     return { ok: false, message: 'AI 总结暂不可用，已保留转写' };
   }
-
-  const summary = (p8.summary ?? '').trim();
-  // summary 必填；模型偶发给空时，降级回退（避免落空摘要冲掉 UI 上的转写）。
-  if (!summary) {
-    return { ok: false, message: 'AI 总结未产出摘要，已保留转写' };
-  }
-
-  // 结构化要点为空(模型只给了摘要)时,回退保留转写文本,避免 raw_content 被清空(流水线/搜索仍可读)。
-  const rawContent = buildSummaryMarkdown(text, p8) || text;
 
   try {
     const hit = await deps.store.updateSummary(noteId, userId, {

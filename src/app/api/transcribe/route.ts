@@ -4,33 +4,25 @@ import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import { notes } from '@/lib/db/schema';
 import { getPublicTaskUrl, OssConfigMissingError } from '@/lib/storage/oss';
-import {
-  transcribeAudioUrl,
-  AsrKeyMissingError,
-  AsrTimeoutError,
-} from '@/lib/asr/funasr';
+import { submitTranscription, AsrKeyMissingError } from '@/lib/asr/funasr';
 import { enforceAiRateLimit } from '@/lib/ratelimit';
 import { consumeQuota } from '@/lib/quota';
-import { createAnthropicClient } from '@/lib/llm';
-import { summarizeTranscript, type SummarizeStore } from '@/features/digest/summarize';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-// Fun-ASR 是「提交公网音频 URL → 异步任务 → 轮询取结果」，长音频可能较久。
-// 故放宽到 300s（funasr 模块默认轮询总超时 5min，对齐）。
-// 注：若后续要支持超长音频，可改为「提交即返回 task_id + 前端/后续查询」的异步模式；
-// 本期同步轮询，3 分钟内录音足够用。
-export const maxDuration = 300;
+// 改异步后只「提交任务」即返回（不再阻塞轮询），故时长可收紧。结果由 /api/transcribe/status 轮询完成。
+export const maxDuration = 60;
 
 /**
- * POST /api/transcribe  { noteId }
- * 取 note 对应音频的 OSS 公网签名 URL → Fun-ASR 转写 → 写回 transcript / raw_content。
+ * POST /api/transcribe  { noteId }  —— 启动异步转写（会议记录 / 长音频，V27）
  *
- * 去 Supabase 改造（Phase C）：
- *   - 音频不再从 supabase.storage 下载，改用 getPublicTaskUrl(media_path) 给 Fun-ASR 自行拉取；
- *   - 转写从 Whisper（OpenAI）切到 Fun-ASR（百炼录音文件异步识别）；
- *   - notes 读/写走 Drizzle、鉴权 getCurrentUser（Phase B 已就绪）。
- * 未配置 DASHSCOPE_API_KEY / OSS 时优雅降级（音频已保存，转写待配置），不报 500。
+ * 改造前：同步「提交 + 轮询 + 取文本 + 总结」一次返回，受 300s 时长所限只能撑 ~3 分钟录音。
+ * 改造后：取音频签名 URL → 提交 Fun-ASR 异步任务 → 存 task_id + transcribe_status='transcribing'
+ *         → **立即返回** {status:'transcribing'}。前端用 GET /api/transcribe/status?noteId 轮询完成；
+ *         即使前端关掉，/api/cron/transcribe 也会在 cron 间隔内兜底完成（取文本 + 会议纪要/P8 总结）。
+ *
+ * 兼容：响应同时带 transcribed:false + message，旧客户端（按 transcribed 判断）会降级显示「转写中」而非报错。
+ * 降级：未配置 DASHSCOPE_API_KEY / OSS 时不报 500，提示待配置、音频已保存。
  */
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -87,6 +79,7 @@ export async function POST(request: Request) {
   } catch (err) {
     if (err instanceof OssConfigMissingError) {
       return NextResponse.json({
+        status: 'failed',
         transcribed: false,
         message: '转写待配置（存储未配置），音频已保存',
       });
@@ -95,61 +88,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '音频地址生成失败' }, { status: 500 });
   }
 
+  // 提交异步转写任务，存 task_id + 状态，立即返回。
   try {
-    const { text } = await transcribeAudioUrl(audioUrl);
-
-    try {
-      await db
-        .update(notes)
-        .set({ transcript: text, rawContent: text })
-        .where(and(eq(notes.id, noteId), eq(notes.userId, user.id)));
-    } catch {
-      return NextResponse.json({ error: '转写结果保存失败' }, { status: 500 });
-    }
-
-    // P8：转写成功后即时 AI 加工（摘要 + 关键要点 + 待办 + 涉及）→ 写回 summary / raw_content。
-    // transcript 保持原始不动（供每晚 P7 清洗 / P1 概念抽取）；LLM 不可用/缺 key 时优雅降级，仅保留转写。
-    const summaryStore: SummarizeStore = {
-      async updateSummary(id, uid, patch) {
-        const rows = await db
-          .update(notes)
-          .set({ summary: patch.summary, rawContent: patch.rawContent })
-          .where(and(eq(notes.id, id), eq(notes.userId, uid)))
-          .returning({ id: notes.id });
-        return rows.length > 0;
-      },
-    };
-    const sum = await summarizeTranscript(noteId, user.id, text, {
-      llm: createAnthropicClient(),
-      store: summaryStore,
-    });
+    const taskId = await submitTranscription(audioUrl);
+    await db
+      .update(notes)
+      .set({ transcribeStatus: 'transcribing', transcribeTaskId: taskId })
+      .where(and(eq(notes.id, noteId), eq(notes.userId, user.id)));
 
     return NextResponse.json({
-      transcribed: true,
-      transcript: text,
-      summarized: sum.ok,
-      summary: sum.ok ? sum.summary : undefined,
-      raw_content: sum.ok ? sum.rawContent : undefined,
+      status: 'transcribing',
+      noteId,
+      transcribed: false,
+      message: '转写已开始，长会议可能需要几分钟，完成后会自动整理',
     });
   } catch (err) {
     if (err instanceof AsrKeyMissingError) {
-      // 优雅降级：未配置 DASHSCOPE_API_KEY 时不报错，提示待配置。
       return NextResponse.json({
+        status: 'failed',
         transcribed: false,
         message: '转写待配置（未设置 DASHSCOPE_API_KEY），音频已保存',
       });
     }
-    if (err instanceof AsrTimeoutError) {
-      console.error('[transcribe] Fun-ASR 超时：', err.message);
-      return NextResponse.json({
-        transcribed: false,
-        message: '转写超时，音频已保存（稍后可重试）',
-      });
-    }
-    console.error('[transcribe] Fun-ASR error:', err);
+    console.error('[transcribe] 提交转写任务失败：', err);
     return NextResponse.json({
+      status: 'failed',
       transcribed: false,
-      message: '转写失败，音频已保存（稍后可重试）',
+      message: '转写启动失败，音频已保存（稍后可重试）',
     });
   }
 }
