@@ -64,6 +64,7 @@ export default async function NoteDetailPage({
       why_important: notesTable.whyImportant,
       summary: notesTable.summary,
       status: notesTable.status,
+      transcribe_status: notesTable.transcribeStatus,
       created_at: notesTable.createdAt,
     })
     .from(notesTable)
@@ -145,6 +146,21 @@ export default async function NoteDetailPage({
         {note.type === 'voice' && note.media_path && (
           <NoteAudio mediaPath={note.media_path} />
         )}
+
+        {/* 异步转写状态（会议记录 / 长音频）：转写中 / 失败 时给出提示，完成后正文即为纪要内容。 */}
+        {note.type === 'voice' && note.transcribe_status === 'transcribing' && (
+          <p className="mt-3 flex items-center gap-2 rounded-lg bg-brand/5 px-3 py-2 text-sm text-brand dark:bg-brand-100/10 dark:text-brand-100">
+            <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-brand/30 border-t-brand" />
+            转写中…长会议可能需要几分钟，完成后会自动整理纪要（刷新查看）
+          </p>
+        )}
+        {note.type === 'voice' &&
+          note.transcribe_status === 'failed' &&
+          !text && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+              转写未成功，音频已保存。可重新录制，或稍后再试。
+            </p>
+          )}
 
         {/* 原始转写折叠区：仅当正文是「AI 整理后的结构化内容」（与原始转写不同）时才展示，
             避免 AI 总结降级时 raw_content 回退为转写本身、与上方正文重复两遍。 */}
