@@ -68,6 +68,7 @@ import {
   Download,
   Upload,
   Database,
+  Share2,
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
@@ -135,6 +136,7 @@ export {
   Download as DownloadIcon,
   Upload as UploadIcon,
   Database as DatabaseIcon,
+  Share2 as ShareIcon,
 };
 
 /** 记录类型 → 图标组件（一处定义，替代各页重复的 TYPE_ICON emoji 表）。 */

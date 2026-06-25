@@ -91,6 +91,7 @@ export function __resetRateLimitStore(): void {
 // 默认值偏宽松（够正常人手动操作），可由 env 覆盖窗口内上限（窗口长度固定 1 分钟）。
 // image=图片上传(/api/images)；ocr=图片转文字(/api/ocr，qwen-vl)。V13 新增。
 // gen=AI 生成(/api/generate-cards、/api/study-guide)，单次较重，按分钟限频。V16 新增。
+// export=整库导出(/api/export?format=json|md)，全量取数较重，给低频闸防被刷。V29 新增。
 export type AiEndpoint =
   | 'ask'
   | 'transcribe'
@@ -98,7 +99,8 @@ export type AiEndpoint =
   | 'audio'
   | 'image'
   | 'ocr'
-  | 'gen';
+  | 'gen'
+  | 'export';
 
 const RATE_WINDOW_MS = 60_000; // 1 分钟固定窗口
 
@@ -110,6 +112,8 @@ const RATE_CONFIG: Record<AiEndpoint, { env: string; fallback: number }> = {
   image: { env: 'RATE_IMAGE_PER_MIN', fallback: 20 },
   ocr: { env: 'RATE_OCR_PER_MIN', fallback: 10 },
   gen: { env: 'RATE_GEN_PER_MIN', fallback: 10 },
+  // 整库导出：全量取数+拼接较重，正常人不会一分钟点很多次，给保守低频闸。
+  export: { env: 'RATE_EXPORT_PER_MIN', fallback: 6 },
 };
 
 /** 解析某端点每分钟上限：env 有合法正整数则用之，否则用缺省。 */

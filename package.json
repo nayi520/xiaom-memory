@@ -13,7 +13,8 @@
     "test:pipeline": "tsx scripts/test-pipeline.ts",
     "test:fsrs": "tsx scripts/test-fsrs.ts",
     "test:search": "tsx scripts/test-search.ts",
-    "test:todos": "tsx scripts/test-todos.ts"
+    "test:todos": "tsx scripts/test-todos.ts",
+    "test:export": "tsx scripts/test-export.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",

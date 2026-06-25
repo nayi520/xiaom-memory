@@ -13,6 +13,7 @@ import ChangePasswordCard from '@/features/settings/components/ChangePasswordCar
 import ExportMarkdownButton from '@/features/settings/components/ExportMarkdownButton';
 import ExportAnkiButton from '@/features/settings/components/ExportAnkiButton';
 import ExportAllButton from '@/features/settings/components/ExportAllButton';
+import ExportLibraryButtons from '@/features/settings/components/ExportLibraryButtons';
 import ImportMarkdownCard from '@/features/settings/components/ImportMarkdownCard';
 import ShortcutsHelpEntry from '@/features/settings/components/ShortcutsHelpEntry';
 import { OnboardingSettings } from '@/features/onboarding';
@@ -165,16 +166,26 @@ export default function SettingsPage() {
           导出与管理
         </SectionTitle>
         <div className="grid gap-8 lg:grid-cols-2 lg:gap-x-10">
-          <div className="space-y-2.5">
-            <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">导出知识库</p>
-            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-              把整理后的概念（按领域 › 主题组织，附其下原始记录）导出为一份 Markdown 文件，方便备份或迁移。
-            </p>
-            <ExportMarkdownButton />
-            <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
-              或把复习卡片导出为 Anki 可导入的 CSV（问题, 答案, 概念），在 Anki「文件 → 导入」中加载。
-            </p>
-            <ExportAnkiButton />
+          <div className="space-y-5">
+            <div className="space-y-2.5">
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">导出我的知识库</p>
+              <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                把全部记录（排除回收站）导出带走：JSON 结构化备份（含概念、标签，便于再导入），或一份按时间倒序的可读 Markdown 文档（每条含正文、为什么重要与来源）。
+              </p>
+              <ExportLibraryButtons />
+            </div>
+
+            <div className="space-y-2.5">
+              <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">导出知识库（按概念）</p>
+              <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                把整理后的概念（按领域 › 主题组织，附其下原始记录）导出为一份 Markdown 文件，方便备份或迁移。
+              </p>
+              <ExportMarkdownButton />
+              <p className="text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+                或把复习卡片导出为 Anki 可导入的 CSV（问题, 答案, 概念），在 Anki「文件 → 导入」中加载。
+              </p>
+              <ExportAnkiButton />
+            </div>
           </div>
 
           <div className="space-y-2.5">

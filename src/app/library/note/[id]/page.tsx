@@ -19,6 +19,7 @@ import NoteAudio from '@/features/library/components/NoteAudio';
 import NoteImage from '@/features/library/components/NoteImage';
 import NoteTagEditor from '@/features/library/components/NoteTagEditor';
 import NoteDeleteButton from '@/features/capture/components/NoteDeleteButton';
+import { noteToMarkdown, deriveNoteTitle, NoteExportActions } from '@/features/export';
 import {
   PageShell,
   SectionTitle,
@@ -97,6 +98,20 @@ export default async function NoteDetailPage({
 
   const text = note.raw_content || note.transcript || '';
 
+  // 「复制为 Markdown / 分享」（V29）：服务端用纯函数 noteToMarkdown 拼好，客户端只管复制/分享。
+  const noteInput = {
+    type: note.type,
+    rawContent: note.raw_content,
+    transcript: note.transcript,
+    url: note.url,
+    whyImportant: note.why_important,
+    summary: note.summary,
+    hasMedia: Boolean(note.media_path),
+    createdAt: note.created_at,
+  };
+  const exportMarkdown = noteToMarkdown(noteInput);
+  const exportTitle = deriveNoteTitle(noteInput);
+
   return (
     <PageShell width="reading">
       <nav className="mb-4 flex items-center gap-1.5 text-sm text-zinc-400">
@@ -108,7 +123,8 @@ export default async function NoteDetailPage({
         </Link>
         <ChevronRight aria-hidden className="h-3.5 w-3.5 text-zinc-300 dark:text-zinc-600" />
         <span className="font-medium text-zinc-600 dark:text-zinc-300">原始记录</span>
-        <span className="ml-auto">
+        <span className="ml-auto flex items-center gap-2">
+          <NoteExportActions markdown={exportMarkdown} title={exportTitle} />
           <NoteDeleteButton noteId={note.id} redirectTo="/library" />
         </span>
       </nav>
