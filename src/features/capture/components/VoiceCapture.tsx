@@ -20,8 +20,12 @@ export default function VoiceCapture({
   confirmNote,
   updateNote,
   failNote,
-}: CaptureHandlers) {
-  const [mode, setMode] = useState<Mode>('note');
+  initialMode = 'note',
+}: CaptureHandlers & {
+  /** 首页「快捷记录 · 会议」深链时预选会议模式（默认语音速记）。 */
+  initialMode?: Mode;
+}) {
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [state, setState] = useState<RecState>('idle');
   const [seconds, setSeconds] = useState(0);
   const [paused, setPaused] = useState(false);

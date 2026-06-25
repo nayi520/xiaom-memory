@@ -34,16 +34,28 @@ import StudyGuideButton from '@/features/library/components/StudyGuideButton';
 import OnThisDay from '@/features/library/components/OnThisDay';
 import {
   PageShell,
+  Button,
   EmptyState,
   EmptyLibrary,
   LibraryIcon,
   ClockIcon,
   AskIcon,
   ListTodoIcon,
+  TextIcon,
   ChevronRight,
   cardClass,
   cn,
 } from '@/components/ui';
+
+/** 知识库整库为空时的统一「去记录」行动（仅根层无任何概念时给，下钻空态不给避免误导）。 */
+const RECORD_CTA = (
+  <Link href="/">
+    <Button variant="secondary" size="sm">
+      <TextIcon aria-hidden className="h-4 w-4" />
+      去记第一条
+    </Button>
+  </Link>
+);
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '知识库 · 小M' };
@@ -340,6 +352,7 @@ export default async function LibraryPage({ searchParams }: Props) {
           <DrillList
             empty="知识库还是空的——先去记点东西，AI 整理后会自动归类到这里。"
             items={[]}
+            emptyAction={RECORD_CTA}
           />
         ) : (
           <EmptyState
@@ -353,6 +366,7 @@ export default async function LibraryPage({ searchParams }: Props) {
       <div className="lg:hidden">
         <DrillList
           empty="知识库还是空的——先去记点东西，AI 整理后会自动归类到这里。"
+          emptyAction={RECORD_CTA}
           items={domains.map((d) => ({
             key: d.name,
             href: `/library?domain=${encodeURIComponent(d.name)}`,
@@ -650,6 +664,7 @@ function AggregatedView({ groups }: { groups: DomainGroup[] }) {
         art={<EmptyLibrary />}
         title="知识库还是空的"
         description="先去记点东西，AI 整理后会自动归类到这里。"
+        action={RECORD_CTA}
       />
     );
   }
@@ -791,13 +806,23 @@ interface DrillItem {
   pinned?: boolean;
 }
 
-function DrillList({ items, empty }: { items: DrillItem[]; empty: string }) {
+function DrillList({
+  items,
+  empty,
+  emptyAction,
+}: {
+  items: DrillItem[];
+  empty: string;
+  /** 仅整库为空（根层）时传入「去记录」CTA；下钻空态不传。 */
+  emptyAction?: React.ReactNode;
+}) {
   if (items.length === 0) {
     return (
       <EmptyState
         icon={<LibraryIcon aria-hidden className="h-7 w-7" />}
         title="这里还是空的"
         description={empty}
+        action={emptyAction}
       />
     );
   }

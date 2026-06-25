@@ -39,20 +39,20 @@ interface Step {
 const STEPS: Step[] = [
   {
     Icon: TextIcon,
-    title: '随手捕获',
-    desc: '想法、读到的要点、一段语音或一个链接——先记下来，不打断思路。',
+    title: '随手记 · 语音 · 会议',
+    desc: '想法、要点、一个链接随手记下；也能说一段话，长录音自动整理成会议纪要。',
     tint: 'text-brand bg-brand/10',
   },
   {
     Icon: AiIcon,
     title: 'AI 自动整理',
-    desc: '小M 每晚把零散记录整理成概念，归入知识库，并生成复习卡片。',
+    desc: '小M 把零散记录整理成概念归入知识库，并挑出其中的待办，汇总到「行动项」。',
     tint: 'text-violet-500 bg-violet-500/10',
   },
   {
     Icon: ReviewIcon,
-    title: '按记忆曲线复习',
-    desc: '在快要忘记时提醒你复习；也能随时「问小M」，让它基于你的记录作答。',
+    title: '复习 · 问知识库',
+    desc: '在快要忘记时提醒你复习；也能随时「问小M」，让它基于你记过的内容作答。',
     tint: 'text-emerald-500 bg-emerald-500/10',
   },
 ];

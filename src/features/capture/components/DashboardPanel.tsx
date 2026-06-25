@@ -1,17 +1,22 @@
 'use client';
 
 /**
- * 首页概览面板（V6 Dashboard）——把首页从「纯捕获」升级为「捕获 + 概览」。
+ * 首页概览面板（V6 Dashboard · V31 今日概览升级）——把首页从「纯捕获」升级为「一屏掌握今天」。
  *
- * 内容：
- *   1) 连续记录天数 streak（醒目卡，火苗图标）+ 今日待复习（点击进 /review，带数字角标）；
- *   2) 知识概览：概念数 / 笔记数 / 本周新增（来自 /api/stats）；
- *   3) 智能推荐（V16）：来自 /api/recommend——该复习的概念（点击进 /review）+ 值得回看的相关概念
- *      （点击进概念详情）；两组都空则整块不渲染；
- *   4) 最近捕获由 CapturePage 复用 RecentNotes 单独渲染，不在本组件内。
+ * 内容（从上到下）：
+ *   0) 快捷记录（仅首页传入 onQuickCapture 时显示）：文本 / 语音 / 会议三枚醒目入口，点了切到对应录入并滚动到捕获区；
+ *   1) 连续记录天数 streak（醒目卡，火苗图标，副文案带「今天已记 N 条」）+ 今日待复习（点击进 /review，带数字角标）；
+ *   2) 今日复习目标进度（来自 /api/review/stats + /api/settings，可选）；
+ *   3) 行动项（V28）：未完成待办数 + 最近几条（来自 /api/todos 的 open）+ 进 /todos；仅有未完成项时显示；
+ *   4) 最近会议（V30）：最近 1–3 条会议记录（来自 /api/notes/timeline?type=meeting，isMeeting 由后端 SQL 判定）+ 进库筛选 ?type=meeting；仅有会议时显示；
+ *   5) 知识概览：概念数 / 笔记数 / 本周新增（来自 /api/stats）；
+ *   6) 智能推荐（V16）：来自 /api/recommend——该复习的概念 + 值得回看的相关概念；两组都空则整块不渲染。
  *
- * 数据：挂载时 GET /api/stats、/api/recommend（已鉴权 + userId 过滤）。加载中骨架；失败友好降级、不崩溃。
- * 空状态（全 0）友好引导去记录 / 复习。深浅色与既有设计系统一致。
+ * 数据复用既有端点（均已鉴权 + 按 userId 过滤，不新增重型查询）：
+ *   /api/stats（含 V31 新增 todayNoteCount）、/api/review/stats、/api/settings、/api/recommend、
+ *   /api/todos（V28）、/api/notes/timeline?type=meeting&limit=3（V30）。
+ * 主面板（stats）失败时整块静默隐藏，不打扰捕获主流程；各次要信息独立拉取、失败/为空就不显示该块。
+ * 加载中骨架；深浅色与既有设计系统一致。
  */
 
 import { useEffect, useState } from 'react';
@@ -24,16 +29,24 @@ import {
   LibraryIcon,
   NoteIcon,
   GoalIcon,
+  ListTodoIcon,
+  MeetingIcon,
+  MeetingBadge,
+  TextIcon,
+  VoiceIcon,
   ChevronRight,
   cn,
 } from '@/components/ui';
 import { apiFetch } from '@/lib/api';
+import type { CaptureTab } from '../types';
 
 interface Stats {
   noteCount: number;
   conceptCount: number;
   cardCount: number;
   dueCount: number;
+  /** V31：今天（UTC 日历日）新增记录数。 */
+  todayNoteCount: number;
   weeklyNoteCount: number;
   streak: number;
 }
@@ -54,11 +67,37 @@ interface Recommend {
   related: RecommendConcept[];
 }
 
-export default function DashboardPanel({ className }: { className?: string }) {
+/** 行动项（/api/todos 的 open）：仅取展示所需字段。 */
+interface TodoLite {
+  noteId: string;
+  text: string;
+  itemKey: string;
+}
+
+/** 最近会议（/api/notes/timeline?type=meeting）：仅取展示所需字段。 */
+interface MeetingLite {
+  id: string;
+  title: string;
+  createdAt: string;
+}
+
+/**
+ * @param onQuickCapture 首页传入：点快捷记录时切换捕获 tab（meeting → 切到语音并预选会议模式）。
+ *   不传则不渲染「快捷记录」一行（如其他页面复用本面板时）。
+ */
+export default function DashboardPanel({
+  className,
+  onQuickCapture,
+}: {
+  className?: string;
+  onQuickCapture?: (tab: CaptureTab, opts?: { meeting?: boolean }) => void;
+}) {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState(false);
   const [goalInfo, setGoalInfo] = useState<GoalInfo | null>(null);
   const [recommend, setRecommend] = useState<Recommend | null>(null);
+  const [todos, setTodos] = useState<{ open: TodoLite[]; openCount: number } | null>(null);
+  const [meetings, setMeetings] = useState<MeetingLite[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,6 +160,52 @@ export default function DashboardPanel({ className }: { className?: string }) {
     };
   }, []);
 
+  // 行动项（V28，复用 /api/todos）：只取 open 的数量 + 最近 3 条文本。失败/为空不显示该块。
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/todos')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: { open?: TodoLite[] } | null) => {
+        if (cancelled || !data || !Array.isArray(data.open)) return;
+        setTodos({ open: data.open.slice(0, 3), openCount: data.open.length });
+      })
+      .catch(() => {
+        /* 行动项失败：静默不显示 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 最近会议（V30，复用时间线 ?type=meeting）：取最近 3 条，标题用 summary→正文首段兜底。失败/为空不显示。
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/notes/timeline?type=meeting&limit=3')
+      .then((r) => (r.ok ? r.json() : null))
+      .then(
+        (
+          data: {
+            notes?: { id: string; summary: string | null; rawContent: string | null; createdAt: string }[];
+          } | null
+        ) => {
+          if (cancelled || !data || !Array.isArray(data.notes)) return;
+          setMeetings(
+            data.notes.map((n) => ({
+              id: n.id,
+              title: meetingTitle(n.summary, n.rawContent),
+              createdAt: n.createdAt,
+            }))
+          );
+        }
+      )
+      .catch(() => {
+        /* 会议列表失败：静默不显示 */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // 加载失败：整块静默隐藏，不打扰捕获主流程（首页核心是记录）。
   if (error) return null;
 
@@ -129,14 +214,30 @@ export default function DashboardPanel({ className }: { className?: string }) {
 
   return (
     <section className={cn('space-y-5', className)}>
-      {/* 连续记录 + 今日待复习 */}
+      {/* 快捷记录（仅首页）：文本 / 语音 / 会议三枚醒目入口，点了切到对应录入并滚动到捕获区。 */}
+      {onQuickCapture && <QuickCaptureRow onQuickCapture={onQuickCapture} />}
+
+      {/* 连续记录（含今日已记 N 条） + 今日待复习 */}
       <div className="grid grid-cols-2 gap-3">
-        <StreakCard streak={stats?.streak ?? 0} loading={loading} empty={empty} />
+        <StreakCard
+          streak={stats?.streak ?? 0}
+          todayCount={stats?.todayNoteCount ?? 0}
+          loading={loading}
+          empty={empty}
+        />
         <DueCard due={stats?.dueCount ?? 0} loading={loading} />
       </div>
 
       {/* 今日复习目标进度（有目标信息时才显示） */}
       {goalInfo && <DailyGoalRow todayCount={goalInfo.todayCount} goal={goalInfo.goal} />}
+
+      {/* 行动项（V28）：仅有未完成项时显示，给数量 + 最近几条 + 进 /todos。 */}
+      {todos && todos.openCount > 0 && (
+        <TodosSection open={todos.open} openCount={todos.openCount} />
+      )}
+
+      {/* 最近会议（V30）：仅有会议时显示，最近 1–3 条 + 进库筛选。 */}
+      {meetings.length > 0 && <MeetingsSection meetings={meetings} />}
 
       {/* 知识概览 */}
       <div>
@@ -175,6 +276,175 @@ export default function DashboardPanel({ className }: { className?: string }) {
         <RecommendSection review={recommend.review} related={recommend.related} />
       )}
     </section>
+  );
+}
+
+/** 标题：会议纪要 summary 优先，否则取正文首个非空段；折叠空白并截断。 */
+function meetingTitle(summary: string | null, rawContent: string | null, max = 32): string {
+  const candidate = (summary ?? '').trim() || (rawContent ?? '').trim();
+  const cleaned = candidate.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '会议记录';
+  return cleaned.length > max ? `${cleaned.slice(0, max)}…` : cleaned;
+}
+
+/** 相对日期：今天「今天」、昨天「昨天」、更早给月日。 */
+function relDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const dayMs = 24 * 60 * 60 * 1000;
+  const startOf = (t: number) => {
+    const x = new Date(t);
+    x.setHours(0, 0, 0, 0);
+    return x.getTime();
+  };
+  const diffDays = Math.round((startOf(Date.now()) - startOf(d.getTime())) / dayMs);
+  if (diffDays <= 0) return '今天';
+  if (diffDays === 1) return '昨天';
+  return d.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+}
+
+/** 快捷记录：醒目三枚入口（文本 / 语音 / 会议），点了切捕获 tab 并滚到捕获区。 */
+function QuickCaptureRow({
+  onQuickCapture,
+}: {
+  onQuickCapture: (tab: CaptureTab, opts?: { meeting?: boolean }) => void;
+}) {
+  const items: {
+    key: string;
+    label: string;
+    Icon: typeof TextIcon;
+    onClick: () => void;
+  }[] = [
+    { key: 'text', label: '文本', Icon: TextIcon, onClick: () => onQuickCapture('text') },
+    { key: 'voice', label: '语音', Icon: VoiceIcon, onClick: () => onQuickCapture('voice') },
+    {
+      key: 'meeting',
+      label: '会议',
+      Icon: MeetingIcon,
+      onClick: () => onQuickCapture('voice', { meeting: true }),
+    },
+  ];
+  return (
+    <div>
+      <SectionTitle>快捷记录</SectionTitle>
+      <div className="grid grid-cols-3 gap-3">
+        {items.map((it) => (
+          <button
+            key={it.key}
+            type="button"
+            onClick={it.onClick}
+            className="group flex flex-col items-center gap-1.5 rounded-card border border-brand/15 bg-gradient-to-br from-brand/[0.06] to-brand/[0.02] px-2 py-3 text-center shadow-card transition duration-200 ease-smooth hover:-translate-y-0.5 hover:border-brand/30 hover:shadow-card-hover active:translate-y-0 focus-visible:outline-none dark:border-brand/20 dark:from-brand/[0.12] dark:to-transparent"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand/10 text-brand transition group-hover:bg-brand/15 dark:bg-brand/15">
+              <it.Icon aria-hidden className="h-[18px] w-[18px]" />
+            </span>
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+              记一条 · {it.label}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 行动项区：标题（含未完成数）+ 最近几条（点击跳来源记录）+ 进 /todos。 */
+function TodosSection({ open, openCount }: { open: TodoLite[]; openCount: number }) {
+  return (
+    <div className="animate-fade-in">
+      <div className="mb-2.5 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+          行动项
+        </h2>
+        <Link
+          href="/todos"
+          className="inline-flex items-center gap-0.5 text-xs font-medium text-brand/80 transition hover:text-brand focus-visible:outline-none"
+        >
+          全部
+          <ChevronRight aria-hidden className="h-3 w-3" />
+        </Link>
+      </div>
+      <div className="rounded-card border border-zinc-200/80 bg-white px-4 py-3 shadow-card dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <ListTodoIcon aria-hidden className="h-3.5 w-3.5 text-brand" />
+          <span>
+            <span className="tabular-nums font-semibold text-zinc-700 dark:text-zinc-200">
+              {openCount}
+            </span>{' '}
+            项未完成
+          </span>
+        </div>
+        <ul className="space-y-1.5">
+          {open.map((t) => (
+            <li key={`${t.noteId}:${t.itemKey}`}>
+              <Link
+                href={`/library/note/${t.noteId}`}
+                className="flex items-start gap-2 rounded-md px-1 py-0.5 text-sm text-zinc-700 transition hover:text-brand focus-visible:outline-none dark:text-zinc-200 dark:hover:text-brand-100"
+              >
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand/40" aria-hidden />
+                <span className="min-w-0 flex-1 truncate leading-relaxed">{t.text}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        {openCount > open.length && (
+          <Link
+            href="/todos"
+            className="mt-2 inline-flex items-center text-xs text-zinc-400 transition hover:text-brand focus-visible:outline-none"
+          >
+            还有 {openCount - open.length} 项
+            <ChevronRight aria-hidden className="h-3 w-3" />
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** 最近会议区：标题 + 进库筛选 + 最近 1–3 条会议（点击进记录详情）。 */
+function MeetingsSection({ meetings }: { meetings: MeetingLite[] }) {
+  return (
+    <div className="animate-fade-in">
+      <div className="mb-2.5 flex items-center justify-between">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
+          最近会议
+        </h2>
+        <Link
+          href="/timeline?type=meeting"
+          className="inline-flex items-center gap-0.5 text-xs font-medium text-brand/80 transition hover:text-brand focus-visible:outline-none"
+        >
+          全部
+          <ChevronRight aria-hidden className="h-3 w-3" />
+        </Link>
+      </div>
+      <ul className="space-y-2">
+        {meetings.map((m) => (
+          <li key={m.id}>
+            <Link
+              href={`/library/note/${m.id}`}
+              className="group flex items-start gap-2.5 rounded-card border border-zinc-200/80 bg-white px-3.5 py-2.5 shadow-card transition duration-200 ease-smooth hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-card-hover active:translate-y-0 focus-visible:outline-none dark:border-zinc-800 dark:bg-zinc-900"
+            >
+              <span className="mt-0.5 shrink-0 text-brand dark:text-brand-100">
+                <MeetingIcon aria-hidden className="h-[18px] w-[18px]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">
+                  {m.title}
+                </p>
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-400">
+                  <MeetingBadge iconClassName="h-2.5 w-2.5" className="px-1.5 py-0" />
+                  <span className="tabular-nums">{relDay(m.createdAt)}</span>
+                </div>
+              </div>
+              <ChevronRight
+                aria-hidden
+                className="mt-0.5 h-4 w-4 shrink-0 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+              />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -246,16 +516,26 @@ function RecommendGroup({
   );
 }
 
-/** 连续记录天数：醒目品牌渐变卡 + 火苗。空状态给一句引导。 */
+/** 连续记录天数：醒目品牌渐变卡 + 火苗。副文案带「今天已记 N 条」；空状态给一句引导。 */
 function StreakCard({
   streak,
+  todayCount,
   loading,
   empty,
 }: {
   streak: number;
+  todayCount: number;
   loading: boolean;
   empty: boolean;
 }) {
+  // 副文案优先反映「今日是否已记」，再退到连续状态引导。
+  const subtitle = empty
+    ? '今天记一条，开启连续记录'
+    : todayCount > 0
+      ? `今天已记 ${todayCount} 条`
+      : streak > 0
+        ? '今天还没记，记一条别断签'
+        : '今天还没记，记一条续上';
   return (
     <div className="relative overflow-hidden rounded-card border border-brand/15 bg-gradient-to-br from-brand/[0.07] to-brand/[0.02] px-4 py-3.5 shadow-card dark:border-brand/20 dark:from-brand/[0.12] dark:to-transparent">
       <div className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
@@ -273,15 +553,7 @@ function StreakCard({
         </span>
         {!loading && <span className="text-xs text-zinc-400">天</span>}
       </div>
-      {!loading && (
-        <p className="mt-0.5 truncate text-[11px] text-zinc-400">
-          {empty
-            ? '今天记一条，开启连续记录'
-            : streak > 0
-              ? '保持住，别断签'
-              : '今天还没记，记一条续上'}
-        </p>
-      )}
+      {!loading && <p className="mt-0.5 truncate text-[11px] text-zinc-400">{subtitle}</p>}
     </div>
   );
 }

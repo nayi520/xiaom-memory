@@ -19,6 +19,7 @@ import {
   TextIcon,
   ReviewIcon,
   LibraryIcon,
+  ListTodoIcon,
   AskIcon,
   CloseIcon,
   cn,
@@ -51,6 +52,12 @@ const STEPS: TourStep[] = [
     Icon: LibraryIcon,
     title: '你的知识库',
     desc: 'AI 整理后的概念都归类在此，可下钻浏览、看关系图谱。',
+  },
+  {
+    target: 'nav-todos',
+    Icon: ListTodoIcon,
+    title: '行动项',
+    desc: '语音 / 会议里提到的待办，自动汇总到这里，勾掉即完成。',
   },
   {
     target: 'nav-ask',

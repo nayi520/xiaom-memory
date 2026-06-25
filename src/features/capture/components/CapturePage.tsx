@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Note } from '@/lib/types';
 import type { CaptureTab, RecentItem } from '../types';
@@ -25,6 +25,10 @@ const TABS: { key: CaptureTab; label: string; Icon: LucideIcon }[] = [
 export default function CapturePage() {
   const [tab, setTab] = useState<CaptureTab>('text');
   const [recent, setRecent] = useState<RecentItem[]>([]);
+  // 「快捷记录 · 会议」深链：切到语音 tab 时预选会议模式（折进语音组件的 key，确保 initialMode 生效）。
+  const [voiceMeeting, setVoiceMeeting] = useState(false);
+  // 捕获区锚点：移动端点快捷记录后滚到录入处（桌面录入常驻可见，无需滚动）。
+  const captureRef = useRef<HTMLDivElement>(null);
   const { error: toastError, info: toastInfo } = useToast();
 
   // 加载最近 3 条（保留本地仍待同步的离线占位，避免被服务端列表覆盖丢失）。
@@ -131,6 +135,22 @@ export default function CapturePage() {
 
   const handlers = { addOptimistic, confirmNote, updateNote, failNote, queueNote };
 
+  /**
+   * 快捷记录入口（首页 Dashboard）：切到对应录入 tab（meeting → 语音 + 预选会议模式），
+   * 移动端再滚动到捕获区，让「记一条」一步到位。
+   */
+  const onQuickCapture = useCallback(
+    (next: CaptureTab, opts?: { meeting?: boolean }) => {
+      setVoiceMeeting(next === 'voice' && !!opts?.meeting);
+      setTab(next);
+      // 移动端录入在下方，滚到可见；桌面（lg）录入常驻左栏顶部，浏览器对已可见元素不滚动，无副作用。
+      requestAnimationFrame(() => {
+        captureRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    },
+    []
+  );
+
   return (
     <PageShell width="wide">
       <header className="mb-5 flex items-center justify-between lg:mb-8">
@@ -151,7 +171,7 @@ export default function CapturePage() {
       {/* 桌面双栏：左侧捕获区 / 右侧概览（待复习 + 知识概览 + 最近捕获）；移动端单列堆叠，捕获在最上。
           大屏右栏随宽度略增、间距加大，避免左侧录入栏过宽空荡、两栏比例失衡。 */}
       <div className="flex-1 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_24rem] xl:gap-10 2xl:grid-cols-[minmax(0,1fr)_26rem]">
-        <div>
+        <div ref={captureRef} className="scroll-mt-4">
           {/* 记录类型分段切换（底部 tab 栏让位给全局导航） */}
           <div
             role="tablist"
@@ -177,9 +197,11 @@ export default function CapturePage() {
             ))}
           </div>
 
-          <div key={tab} className="animate-fade-in">
+          <div key={`${tab}:${voiceMeeting ? 'meeting' : 'note'}`} className="animate-fade-in">
             {tab === 'text' && <TextCapture {...handlers} />}
-            {tab === 'voice' && <VoiceCapture {...handlers} />}
+            {tab === 'voice' && (
+              <VoiceCapture {...handlers} initialMode={voiceMeeting ? 'meeting' : 'note'} />
+            )}
             {tab === 'link' && <LinkCapture {...handlers} />}
             {tab === 'image' && <ImageCapture {...handlers} />}
           </div>
@@ -200,9 +222,9 @@ export default function CapturePage() {
             </span>
           </p>
 
-          {/* 移动端：概览（待复习 + 知识概览）+ 最近捕获，紧随捕获区之后。 */}
+          {/* 移动端：概览（快捷记录 + 待复习 + 行动项 + 最近会议 + 知识概览）+ 最近捕获，紧随捕获区之后。 */}
           <div className="mt-8 space-y-8 lg:hidden">
-            <DashboardPanel />
+            <DashboardPanel onQuickCapture={onQuickCapture} />
             <RecentNotes
               items={recent}
               onTrash={removeNote}

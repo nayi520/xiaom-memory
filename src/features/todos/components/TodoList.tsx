@@ -16,12 +16,14 @@ import Link from 'next/link';
 import { apiFetch } from '@/lib/api';
 import type { TodoItem } from '@/features/todos';
 import {
+  Button,
   EmptyState,
   NoteTypeIcon,
   NOTE_TYPE_LABELS,
   CheckSquareIcon,
   SquareIcon,
   ChevronDown,
+  VoiceIcon,
   useToast,
   cn,
 } from '@/components/ui';
@@ -118,7 +120,15 @@ export default function TodoList({
       <EmptyState
         icon={<CheckSquareIcon aria-hidden className="h-7 w-7" />}
         title="还没有行动项"
-        description="语音速记 / 会议记录总结后，待办会自动出现在这里，随时勾掉。"
+        description="录一段语音或会议，小M 整理时会把其中的待办自动汇总到这里，随时勾掉。"
+        action={
+          <Link href="/">
+            <Button variant="secondary" size="sm">
+              <VoiceIcon aria-hidden className="h-4 w-4" />
+              去录一段
+            </Button>
+          </Link>
+        }
       />
     );
   }
