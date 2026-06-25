@@ -175,6 +175,37 @@ export const notes = pgTable(
   })
 );
 
+// ============ todo_completions：行动项「完成」状态（V28 行动项中心） ============
+// 待办文本从 note.raw_content **实时解析**（GFM 任务清单 `- [ ]` / `- [x]`，见 features/todos/parse），
+// 新待办自动出现、不冗余存储；本表**只持久化「完成」状态**（派生 + 叠加，不改 raw_content）。
+//   - note_id：待办所属记录（FK→notes，随记录删除级联清理）。
+//   - item_key：待办文本归一化后的稳定键（djb2 hex；见 todoItemKey）。命中即视为已完成。
+//   - done_at：勾选完成的时间戳。
+// 唯一约束 (user_id, note_id, item_key)：同一记录同一待办至多一行；toggle done=true 走 upsert，
+//   done=false 删除该行。所有读写显式按 user_id 过滤（授权走应用层，无 RLS）。
+export const todoCompletions = pgTable(
+  'todo_completions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    noteId: uuid('note_id')
+      .notNull()
+      .references(() => notes.id, { onDelete: 'cascade' }),
+    itemKey: text('item_key').notNull(),
+    doneAt: timestamp('done_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    userNoteItemKey: uniqueIndex('todo_completions_user_note_item_key').on(
+      t.userId,
+      t.noteId,
+      t.itemKey
+    ),
+    userIdx: index('todo_completions_user_idx').on(t.userId),
+  })
+);
+
 // ============ concepts：知识原子（embedding vector(1536)） ============
 export const concepts = pgTable(
   'concepts',
@@ -433,3 +464,5 @@ export type DigestRow = typeof digests.$inferSelect;
 export type CorrectionRow = typeof corrections.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type UsageCounterRow = typeof usageCounters.$inferSelect;
+export type TodoCompletionRow = typeof todoCompletions.$inferSelect;
+export type NewTodoCompletion = typeof todoCompletions.$inferInsert;

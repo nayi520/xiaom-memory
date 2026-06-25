@@ -39,6 +39,7 @@ import {
   LibraryIcon,
   ClockIcon,
   AskIcon,
+  ListTodoIcon,
   ChevronRight,
   cardClass,
   cn,
@@ -476,6 +477,14 @@ function Shell({
           <p className="mt-1 text-sm text-zinc-400">AI 整理后的概念，可下钻 / 俯瞰 / 看关系图谱</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* V28：行动项中心入口（移动端经此到达，桌面侧栏「探索」亦有）。 */}
+          <Link
+            href="/todos"
+            className="inline-flex items-center gap-1.5 rounded-field border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-brand hover:text-brand focus-visible:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
+          >
+            <ListTodoIcon aria-hidden className="h-[18px] w-[18px]" />
+            行动项
+          </Link>
           <Link
             href="/timeline"
             className="inline-flex items-center gap-1.5 rounded-field border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-sm transition hover:border-brand hover:text-brand focus-visible:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"

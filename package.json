@@ -12,7 +12,8 @@
     "db:migrate": "drizzle-kit migrate",
     "test:pipeline": "tsx scripts/test-pipeline.ts",
     "test:fsrs": "tsx scripts/test-fsrs.ts",
-    "test:search": "tsx scripts/test-search.ts"
+    "test:search": "tsx scripts/test-search.ts",
+    "test:todos": "tsx scripts/test-todos.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",
