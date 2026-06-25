@@ -20,6 +20,7 @@ import {
   splitByTerms,
   type RawHit,
 } from '../src/features/library/search';
+import { isMeetingNote, MEETING_MIN_CHARS } from '../src/lib/constants';
 
 let failed = 0;
 
@@ -190,6 +191,26 @@ console.log('9. 命中词分片');
   const special = splitByTerms('成本(C)很高', '(C)');
   const smarked = special.filter((s) => s.match).map((s) => s.text).join(',');
   assert(smarked === '(C)', '正则元字符按字面命中', smarked);
+}
+
+// ---- 10. isMeetingNote（V30 会议判定纯函数：与后端 summarize 分流同口径） ----
+console.log('10. 会议判定（isMeetingNote）');
+{
+  const T = MEETING_MIN_CHARS; // 缺省 800（env 未覆盖时）
+
+  // 语音 + 转写字数达阈值 → 会议。
+  assert(isMeetingNote({ type: 'voice', transcriptLength: T }) === true, '语音且恰好达阈值 → 会议');
+  assert(isMeetingNote({ type: 'voice', transcriptLength: T + 500 }) === true, '语音且远超阈值 → 会议');
+
+  // 语音但转写偏短 → 不是会议（普通语音速记）。
+  assert(isMeetingNote({ type: 'voice', transcriptLength: T - 1 }) === false, '语音但差一字 → 非会议');
+  assert(isMeetingNote({ type: 'voice', transcriptLength: 0 }) === false, '语音空转写 → 非会议');
+  assert(isMeetingNote({ type: 'voice', transcriptLength: null }) === false, '语音转写为 null → 非会议');
+
+  // 非语音类型即便很长也不算会议（会议只可能是长语音）。
+  assert(isMeetingNote({ type: 'text', transcriptLength: T + 1000 }) === false, '文本类型 → 永不是会议');
+  assert(isMeetingNote({ type: 'link', transcriptLength: T }) === false, '链接类型 → 永不是会议');
+  assert(isMeetingNote({ type: null, transcriptLength: T }) === false, '类型缺失 → 非会议');
 }
 
 // ---- 汇总 ----

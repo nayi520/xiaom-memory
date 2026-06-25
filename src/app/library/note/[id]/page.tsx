@@ -26,12 +26,14 @@ import {
   Markdown,
   NoteTypeIcon,
   NOTE_TYPE_LABELS,
+  MeetingBadge,
   WhyIcon,
   LinkIcon,
   ChevronRight,
   cardClass,
   cn,
 } from '@/components/ui';
+import { isMeetingNote } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '记录 · 小M' };
@@ -98,6 +100,13 @@ export default async function NoteDetailPage({
 
   const text = note.raw_content || note.transcript || '';
 
+  // V30 会议判定：与列表/后端同口径（语音 + 转写字数达阈值）。详情页已取整段 transcript，
+  // 此处单条在 JS 里算长度即可（列表场景才需 SQL 避免拉整段）。
+  const isMeeting = isMeetingNote({
+    type: note.type,
+    transcriptLength: (note.transcript ?? '').trim().length,
+  });
+
   // 「复制为 Markdown / 分享」（V29）：服务端用纯函数 noteToMarkdown 拼好，客户端只管复制/分享。
   const noteInput = {
     type: note.type,
@@ -136,6 +145,7 @@ export default async function NoteDetailPage({
             <NoteTypeIcon type={note.type} className="h-3.5 w-3.5" />
             {NOTE_TYPE_LABELS[note.type] ?? note.type}
           </span>
+          {isMeeting && <MeetingBadge />}
           <span>{new Date(note.created_at).toLocaleString('zh-CN')}</span>
           <span>{STATUS_LABELS[note.status] ?? note.status}</span>
         </p>

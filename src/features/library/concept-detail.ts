@@ -5,7 +5,7 @@
  * + 关联概念（对端名）+ 标签（来自关联记录）。授权严格按 concepts.user_id 过滤；他人/不存在返回 null。
  */
 
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import {
   concepts as conceptsTable,
@@ -15,12 +15,15 @@ import {
   noteTags,
   tags as tagsTable,
 } from '@/lib/db/schema';
+import { MEETING_MIN_CHARS } from '@/lib/constants';
 
 export interface ConceptDetailNote {
   id: string;
   rawContent: string | null;
   type: string;
   createdAt: string;
+  /** V30：是否为会议（长语音，由 SQL 判定，不取整段 transcript）；非语音恒为 false。 */
+  isMeeting: boolean;
 }
 export interface ConceptDetailLink {
   conceptId: string;
@@ -87,6 +90,8 @@ export async function getConceptDetail(
         type: notesTable.type,
         raw_content: notesTable.rawContent,
         created_at: notesTable.createdAt,
+        // 会议判定走 SQL（语音 + 转写字数达阈值），避免把整段 transcript 取到内存。
+        is_meeting: sql<boolean>`(${notesTable.type} = 'voice' and char_length(coalesce(trim(${notesTable.transcript}), '')) >= ${MEETING_MIN_CHARS})`,
       })
       .from(noteConcepts)
       .innerJoin(notesTable, eq(notesTable.id, noteConcepts.noteId))
@@ -106,6 +111,7 @@ export async function getConceptDetail(
       rawContent: r.raw_content,
       type: r.type,
       createdAt: isoOf(r.created_at),
+      isMeeting: r.is_meeting === true,
     }))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 

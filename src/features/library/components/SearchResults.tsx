@@ -20,6 +20,7 @@ import {
   CloseIcon,
   WhyIcon,
   NoteIcon,
+  MeetingBadge,
   cardClass,
   cn,
 } from '@/components/ui';
@@ -32,13 +33,21 @@ const SOURCE_STYLES: Record<HitSource, string> = {
 
 const MODES: SearchMode[] = ['hybrid', 'keyword', 'semantic'];
 
-/** 结果类型筛选维度（前端按 kind 过滤，不动后端检索）。 */
-export type TypeFilter = 'all' | 'concept' | 'note';
+/** 结果类型筛选维度（前端按 kind / isMeeting 过滤，不动后端检索）。meeting = 长语音会议记录。 */
+export type TypeFilter = 'all' | 'concept' | 'note' | 'meeting';
 const TYPES: { key: TypeFilter; label: string }[] = [
   { key: 'all', label: '全部' },
   { key: 'concept', label: '概念' },
   { key: 'note', label: '记录' },
+  { key: 'meeting', label: '会议' },
 ];
+
+/** 类型筛选维度的中文名（无结果 / 计数文案复用）。 */
+const TYPE_NAME: Record<Exclude<TypeFilter, 'all'>, string> = {
+  concept: '概念',
+  note: '记录',
+  meeting: '会议',
+};
 
 interface Props {
   q: string;
@@ -100,7 +109,7 @@ export default function SearchResults({
           “<span className="font-medium text-zinc-600 dark:text-zinc-300">{q}</span>” 共{' '}
           {hits.length} 条结果
           {type !== 'all' && (
-            <span className="text-zinc-400">（仅{type === 'concept' ? '概念' : '记录'}）</span>
+            <span className="text-zinc-400">（仅{TYPE_NAME[type]}）</span>
           )}
         </p>
         <Link
@@ -205,7 +214,7 @@ export default function SearchResults({
           <SearchNoResults
             q={q}
             art={<EmptySearch />}
-            title={`没有${type === 'concept' ? '概念' : '记录'}类结果`}
+            title={`没有${TYPE_NAME[type]}类结果`}
             description="试试把「类型」切回全部，或换个关键词。"
             resetTypeHref={searchHref(q, 'all', domain, tag, mode)}
           />
@@ -244,6 +253,8 @@ export default function SearchResults({
                     )}
                     {hit.kind === 'concept' ? '概念' : '记录'}
                   </span>
+                  {/* V30：会议记录在记录命中里额外标注「会议」徽标。 */}
+                  {hit.kind === 'note' && hit.isMeeting && <MeetingBadge />}
                   <span className="flex flex-wrap gap-1">
                     {hit.sources.map((s) => (
                       <span

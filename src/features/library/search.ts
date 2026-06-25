@@ -22,6 +22,7 @@ import { and, eq, ilike, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '@/lib/db/client';
 import { concepts, noteConcepts, noteTags, notes, tags } from '@/lib/db/schema';
 import { embed, EmbeddingKeyMissingError } from '@/lib/embeddings';
+import { MEETING_MIN_CHARS } from '@/lib/constants';
 
 // ============ 类型 ============
 
@@ -42,6 +43,8 @@ export interface RawHit {
   /** 语义命中附带相似度 */
   similarity?: number;
   created_at: string;
+  /** V30：记录是否为会议（长语音，由 SQL 判定）；概念命中恒为 undefined。前端据此显示「会议」徽标。 */
+  isMeeting?: boolean;
 }
 
 /** 合并后的最终命中 */
@@ -152,6 +155,8 @@ interface NoteRow {
   why_important: string | null;
   url: string | null;
   created_at: string;
+  /** 该记录是否为会议（语音且转写字数达阈值），由 SQL 算出。 */
+  is_meeting?: boolean;
 }
 
 function conceptToHit(row: ConceptRow, similarity?: number): RawHit {
@@ -173,6 +178,7 @@ function noteToHit(row: NoteRow): RawHit {
     title: excerpt(body, 60) || '（无文字内容）',
     snippet: excerpt(row.why_important ? `💡 ${row.why_important}` : ''),
     created_at: row.created_at,
+    isMeeting: row.is_meeting === true,
   };
 }
 
@@ -193,7 +199,7 @@ const conceptCols = {
   created_at: concepts.createdAt,
 };
 
-/** notes 查询投影（→ NoteRow） */
+/** notes 查询投影（→ NoteRow）。is_meeting 由 SQL 算出（语音且转写字数达阈值），驱动「会议」徽标。 */
 const noteCols = {
   id: notes.id,
   raw_content: notes.rawContent,
@@ -202,6 +208,7 @@ const noteCols = {
   why_important: notes.whyImportant,
   url: notes.url,
   created_at: notes.createdAt,
+  is_meeting: sql<boolean>`(${notes.type} = 'voice' and char_length(coalesce(trim(${notes.transcript}), '')) >= ${MEETING_MIN_CHARS})`,
 };
 
 /** Date → ISO 字符串（投影出来的 created_at 是 Date，RawHit/排序需要字符串） */
@@ -284,6 +291,7 @@ export async function runLibrarySearch(
   const toNote = (r: {
     id: string; raw_content: string | null; transcript: string | null;
     summary: string | null; why_important: string | null; url: string | null; created_at: Date | string;
+    is_meeting?: boolean;
   }) => noteToHit({ ...r, created_at: iso(r.created_at) });
 
   // ---- 关键词（ILIKE 多字段） + 标签精确匹配，并行（mode=semantic 时跳过） ----

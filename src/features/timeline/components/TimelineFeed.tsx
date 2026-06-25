@@ -26,6 +26,8 @@ import {
   ErrorState,
   SkeletonCard,
   NoteTypeIcon,
+  MeetingBadge,
+  MeetingIcon,
   ChevronRight,
   CheckSquareIcon,
   PullToRefresh,
@@ -65,6 +67,8 @@ interface TimelineNote {
   summary: string | null;
   createdAt: string;
   status: string;
+  /** V30：该语音转写是否达到会议阈值（由 API 用 SQL 判定）；非语音恒为 false。 */
+  isMeeting?: boolean;
 }
 
 function bodyOf(n: TimelineNote): string {
@@ -84,7 +88,7 @@ function timeLabel(iso: string): string {
 
 type Phase = 'loading' | 'ready' | 'loadingMore' | 'error';
 
-export default function TimelineFeed() {
+export default function TimelineFeed({ type = null }: { type?: string | null }) {
   const [notes, setNotes] = useState<TimelineNote[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>('loading');
@@ -95,16 +99,21 @@ export default function TimelineFeed() {
   const selection = useSelection();
   const batch = useNoteBatch();
 
-  const load = useCallback(async (before: string | null) => {
-    const params = new URLSearchParams({ limit: '30' });
-    if (before) params.set('before', before);
-    const res = await apiFetch(`/api/notes/timeline?${params.toString()}`);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      throw new Error(data?.error ?? `加载失败（${res.status}）`);
-    }
-    return data as { notes: TimelineNote[]; nextCursor: string | null };
-  }, []);
+  const load = useCallback(
+    async (before: string | null) => {
+      const params = new URLSearchParams({ limit: '30' });
+      if (before) params.set('before', before);
+      // V30：类型筛选透传给 API（text/voice/meeting/link/image），由后端用 SQL 过滤。
+      if (type) params.set('type', type);
+      const res = await apiFetch(`/api/notes/timeline?${params.toString()}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error ?? `加载失败（${res.status}）`);
+      }
+      return data as { notes: TimelineNote[]; nextCursor: string | null };
+    },
+    [type]
+  );
 
   const loadFirst = useCallback(() => {
     let cancelled = false;
@@ -257,6 +266,23 @@ export default function TimelineFeed() {
   }
 
   if (notes.length === 0) {
+    // 类型筛选下无记录：引导切回「全部」，而非「去记录」（避免误导成整库为空）。
+    if (type) {
+      return (
+        <EmptyState
+          art={<EmptyTimeline />}
+          title="该类型下还没有记录"
+          description="试试切到「全部」，或换个类型看看。"
+          action={
+            <Link href="/timeline">
+              <Button variant="secondary" size="sm">
+                查看全部
+              </Button>
+            </Link>
+          }
+        />
+      );
+    }
     return (
       <EmptyState
         art={<EmptyTimeline />}
@@ -410,7 +436,12 @@ function TimelineCard({ note, selectionActive, selected, onToggle, onLongPress }
         <SelectCheckbox checked={selected} onChange={onToggle} className="-ml-1 mt-0.5" />
       )}
       <span className="mt-0.5 shrink-0 text-zinc-400 dark:text-zinc-500">
-        <NoteTypeIcon type={note.type} className="h-[18px] w-[18px]" />
+        {/* 会议（长语音）用专属图标替代普通麦克风，列首一眼可辨；非会议保持原样。 */}
+        {note.isMeeting ? (
+          <MeetingIcon className="h-[18px] w-[18px] text-brand dark:text-brand-100" />
+        ) : (
+          <NoteTypeIcon type={note.type} className="h-[18px] w-[18px]" />
+        )}
       </span>
       <div className="min-w-0 flex-1">
         <div className="relative max-h-32 overflow-hidden">
@@ -421,6 +452,7 @@ function TimelineCard({ note, selectionActive, selected, onToggle, onLongPress }
         </div>
         <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
           <span>{timeLabel(note.createdAt)}</span>
+          {note.isMeeting && <MeetingBadge />}
           {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
         </div>
       </div>

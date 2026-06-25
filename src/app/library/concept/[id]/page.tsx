@@ -7,7 +7,7 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { getCurrentUser } from '@/lib/auth';
 import { getDb } from '@/lib/db/client';
 import {
@@ -30,11 +30,13 @@ import {
   SectionTitle,
   Badge,
   NoteTypeIcon,
+  MeetingBadge,
   GraduateIcon,
   ChevronRight,
   cardClass,
   cn,
 } from '@/components/ui';
+import { MEETING_MIN_CHARS } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: '概念 · 小M' };
@@ -54,6 +56,8 @@ interface NoteRow {
   summary: string | null;
   why_important: string | null;
   created_at: string;
+  /** V30：是否为会议（长语音，SQL 判定）。 */
+  is_meeting: boolean;
 }
 
 export default async function ConceptDetailPage({
@@ -92,6 +96,8 @@ export default async function ConceptDetailPage({
         summary: notesTable.summary,
         why_important: notesTable.whyImportant,
         created_at: notesTable.createdAt,
+        // 会议判定走 SQL（语音 + 转写字数达阈值），与列表/时间线同口径。
+        is_meeting: sql<boolean>`(${notesTable.type} = 'voice' and char_length(coalesce(trim(${notesTable.transcript}), '')) >= ${MEETING_MIN_CHARS})`,
       })
       .from(noteConcepts)
       .innerJoin(notesTable, eq(notesTable.id, noteConcepts.noteId))
@@ -134,6 +140,7 @@ export default async function ConceptDetailPage({
     .map((r) => ({
       ...r,
       created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+      is_meeting: r.is_meeting === true,
     }))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 
@@ -336,9 +343,10 @@ export default async function ConceptDetailPage({
                           90
                         ) || '（无文字内容）'}
                       </p>
-                      <p className="mt-1.5 inline-flex items-center text-xs text-zinc-400">
+                      <p className="mt-1.5 flex flex-wrap items-center gap-x-1 gap-y-1 text-xs text-zinc-400">
                         {new Date(note.created_at).toLocaleDateString('zh-CN')}
-                        <span className="mx-1">·</span>
+                        {note.is_meeting && <MeetingBadge />}
+                        <span aria-hidden>·</span>
                         <span className="inline-flex items-center text-brand/70 transition group-hover:text-brand">
                           查看详情
                           <ChevronRight aria-hidden className="h-3 w-3" />

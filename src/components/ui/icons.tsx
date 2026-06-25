@@ -69,6 +69,7 @@ import {
   Upload,
   Database,
   Share2,
+  Presentation,
   type LucideIcon,
   type LucideProps,
 } from 'lucide-react';
@@ -137,6 +138,8 @@ export {
   Upload as UploadIcon,
   Database as DatabaseIcon,
   Share2 as ShareIcon,
+  // 会议记录（长语音）专用：与普通「语音」(VoiceIcon=Mic) 区分，用演示板/纪要意象。
+  Presentation as MeetingIcon,
 };
 
 /** 记录类型 → 图标组件（一处定义，替代各页重复的 TYPE_ICON emoji 表）。 */
@@ -166,4 +169,29 @@ export function NoteTypeIcon({
 }: { type: string } & Omit<LucideProps, 'ref'>) {
   const Icon = NOTE_TYPE_ICONS[type] ?? FileText;
   return <Icon aria-hidden className={className} {...props} />;
+}
+
+/**
+ * 「会议」徽标（长语音 → 会议纪要）。在时间线 / 搜索结果 / 记录详情统一渲染，与普通「语音」明显区分。
+ * 是否会议由各列表的 SQL（char_length(transcript) ≥ MEETING_MIN_CHARS）判定后决定是否挂这个徽标，
+ * 本组件只负责一致的视觉（brand 色 pill + 演示板图标 + 「会议」字样），不含判定逻辑。
+ */
+export function MeetingBadge({
+  className,
+  iconClassName = 'h-3 w-3',
+}: {
+  className?: string;
+  iconClassName?: string;
+}) {
+  return (
+    <span
+      className={
+        'inline-flex items-center gap-1 rounded-pill bg-brand-light px-2 py-0.5 text-[11px] font-medium leading-tight text-brand dark:bg-brand/15 dark:text-brand-100 ' +
+        (className ?? '')
+      }
+    >
+      <Presentation aria-hidden className={iconClassName} />
+      会议
+    </span>
+  );
 }

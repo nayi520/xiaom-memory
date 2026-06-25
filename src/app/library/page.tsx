@@ -75,9 +75,10 @@ interface DomainSummary {
   concepts: number;
 }
 
-type TypeFilter = 'all' | 'concept' | 'note';
+// V22 概念/记录类型筛选 + V30「会议」维度（meeting = 记录中达到会议阈值的长语音）。
+type TypeFilter = 'all' | 'concept' | 'note' | 'meeting';
 function normalizeType(raw: string | undefined): TypeFilter {
-  return raw === 'concept' || raw === 'note' ? raw : 'all';
+  return raw === 'concept' || raw === 'note' || raw === 'meeting' ? raw : 'all';
 }
 
 interface Props {
@@ -110,9 +111,14 @@ export default async function LibraryPage({ searchParams }: Props) {
     const result = user
       ? await runLibrarySearch(db, user.id, { q, domain, tag, mode })
       : { hits: [], semanticUsed: false };
-    // V22 类型筛选（概念 / 记录）：纯前端按 kind 过滤，不触碰后端检索逻辑。
+    // V22 类型筛选（概念 / 记录）+ V30「会议」：纯前端按 kind / isMeeting 过滤，不触碰后端检索逻辑。
+    //（isMeeting 由 search.ts 用 SQL 算出随命中返回，前端只做收窄展示。）
     const filteredHits =
-      typeFilter === 'all' ? result.hits : result.hits.filter((h) => h.kind === typeFilter);
+      typeFilter === 'all'
+        ? result.hits
+        : typeFilter === 'meeting'
+          ? result.hits.filter((h) => h.kind === 'note' && h.isMeeting)
+          : result.hits.filter((h) => h.kind === typeFilter);
     // 取领域 / 标签清单供筛选 chips（与下钻同口径：本人全部概念的去重领域、全部标签）。
     const [domainOptions, tagOptions] = user
       ? await Promise.all([listDomains(db, user.id), listTags(db, user.id)])

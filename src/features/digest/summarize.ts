@@ -15,6 +15,8 @@
  */
 
 import type { LlmClient } from '@/lib/llm';
+// 会议判定阈值抽到 @/lib/constants 单点定义（前端徽标/筛选复用同一值，避免魔数两处漂移）。
+import { MEETING_MIN_CHARS } from '@/lib/constants';
 import {
   GLOBAL_SYSTEM,
   buildP8Prompt,
@@ -22,15 +24,6 @@ import {
   buildMeetingPrompt,
   type MeetingResult,
 } from './prompts';
-
-/**
- * 转写长度阈值：超过则判定为「会议记录」，走会议纪要格式（议题/决议/待办/参会人/关键信息）；
- * 以下走轻量 P8（要点/待办/涉及）。可经 env 覆盖。纯按长度判定 → 零额外存储、对短语音无影响。
- */
-const MEETING_MIN_CHARS = (() => {
-  const n = Number(process.env.MEMORY_MEETING_MIN_CHARS);
-  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 800;
-})();
 
 /** 把 P8 结构化结果 + 转写原文组织成 note.raw_content 的 Markdown（清晰分节）。 */
 export function buildSummaryMarkdown(_transcript: string, p8: P8Result): string {
