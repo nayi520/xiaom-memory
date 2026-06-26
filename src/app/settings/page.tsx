@@ -22,6 +22,7 @@ import {
   SectionTitle,
   ThemeToggle,
   TrashIcon,
+  TagIcon,
   InsightsIcon,
   AskIcon,
   ChevronRight,
@@ -190,6 +191,28 @@ export default function SettingsPage() {
 
           <div className="space-y-2.5">
             <p className="text-sm font-medium text-zinc-700 dark:text-zinc-200">记录管理</p>
+            <Link
+              href="/library/tags"
+              className={cn(
+                cardClass({ interactive: true, padded: false }),
+                'group flex items-center justify-between px-4 py-4'
+              )}
+            >
+              <span className="flex items-center gap-2.5 font-medium text-zinc-800 dark:text-zinc-100">
+                <TagIcon aria-hidden className="h-[18px] w-[18px] text-zinc-400 dark:text-zinc-500" />
+                标签管理
+                <span className="hidden text-xs font-normal text-zinc-400 sm:inline">
+                  改名 · 合并 · 删除
+                </span>
+              </span>
+              <ChevronRight
+                aria-hidden
+                className="h-4 w-4 text-zinc-300 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-brand dark:text-zinc-600"
+              />
+            </Link>
+            <p className="text-sm leading-relaxed text-zinc-400">
+              统一整理知识库里的标签：合并重复、改正错字、清理不再使用的标签。
+            </p>
             <Link
               href="/trash"
               className={cn(

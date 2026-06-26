@@ -612,6 +612,13 @@ function BrowseFilters({
               #{t}
             </Link>
           ))}
+          {/* 标签管理入口（V32）：改名 / 合并 / 删除，做知识库卫生。 */}
+          <Link
+            href="/library/tags"
+            className="rounded-pill px-2.5 py-1 text-xs font-medium text-zinc-400 transition hover:text-brand focus-visible:outline-none"
+          >
+            管理…
+          </Link>
         </div>
       )}
     </div>

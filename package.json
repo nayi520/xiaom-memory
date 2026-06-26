@@ -14,7 +14,8 @@
     "test:fsrs": "tsx scripts/test-fsrs.ts",
     "test:search": "tsx scripts/test-search.ts",
     "test:todos": "tsx scripts/test-todos.ts",
-    "test:export": "tsx scripts/test-export.ts"
+    "test:export": "tsx scripts/test-export.ts",
+    "test:tags": "tsx scripts/test-tags.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",
