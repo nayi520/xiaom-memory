@@ -15,7 +15,9 @@
     "test:search": "tsx scripts/test-search.ts",
     "test:todos": "tsx scripts/test-todos.ts",
     "test:export": "tsx scripts/test-export.ts",
-    "test:tags": "tsx scripts/test-tags.ts"
+    "test:tags": "tsx scripts/test-tags.ts",
+    "test:llm": "tsx scripts/test-llm.ts",
+    "check:llm": "tsx scripts/check-llm.ts"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",

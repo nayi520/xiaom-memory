@@ -100,7 +100,8 @@ export type AiEndpoint =
   | 'image'
   | 'ocr'
   | 'gen'
-  | 'export';
+  | 'export'
+  | 'check';
 
 const RATE_WINDOW_MS = 60_000; // 1 分钟固定窗口
 
@@ -114,6 +115,9 @@ const RATE_CONFIG: Record<AiEndpoint, { env: string; fallback: number }> = {
   gen: { env: 'RATE_GEN_PER_MIN', fallback: 10 },
   // 整库导出：全量取数+拼接较重，正常人不会一分钟点很多次，给保守低频闸。
   export: { env: 'RATE_EXPORT_PER_MIN', fallback: 6 },
+  // AI 供应商自检（/api/check-llm）：每次会真打 chat ping + 一段 json 总结，是付费调用。
+  // 用户只在切换/排查供应商时手动点几下，给保守低频闸，防被刷爆成本。V?? 新增。
+  check: { env: 'RATE_CHECK_PER_MIN', fallback: 4 },
 };
 
 /** 解析某端点每分钟上限：env 有合法正整数则用之，否则用缺省。 */

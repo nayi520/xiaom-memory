@@ -120,6 +120,31 @@ const LLM_PRESETS: Record<Exclude<LlmProviderId, 'custom'>, LlmPreset> = {
   },
 };
 
+/**
+ * JSON 输出模式（response_format:{type:'json_object'}）的策略，env `LLM_JSON_MODE`：
+ * - 'auto'（默认）：json() 路径带 response_format；若因 response_format/参数类 400 失败，
+ *   自动去掉 response_format 重试一次（prompt 已含「输出合法 JSON」指令，json() 外层还有解析重试兜底）。
+ * - 'on'：强制带 response_format，**不回退**（用于确定供应商支持、想严格约束的场景）。
+ * - 'off'：从不带 response_format，直接靠 prompt 让模型输出 JSON（用于已知不支持该参数的供应商）。
+ *
+ * 兼容性：不填 = 'auto'，对默认 DashScope 行为逐字不变（DashScope 支持 response_format，正常成功不触发回退）。
+ */
+export type LlmJsonMode = 'auto' | 'on' | 'off';
+
+/** 解析 LLM_JSON_MODE（非法/空值回落 'auto'）。 */
+export function resolveLlmJsonMode(): LlmJsonMode {
+  const raw = (env('LLM_JSON_MODE') ?? 'auto').toLowerCase();
+  switch (raw) {
+    case 'auto':
+    case 'on':
+    case 'off':
+      return raw;
+    default:
+      console.warn(`[providers] 未知 LLM_JSON_MODE=${raw}，回落 auto`);
+      return 'auto';
+  }
+}
+
 function readLlmProviderId(): LlmProviderId {
   const raw = (env('LLM_PROVIDER') ?? 'dashscope').toLowerCase();
   switch (raw) {

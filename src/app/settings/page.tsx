@@ -15,6 +15,7 @@ import ExportAnkiButton from '@/features/settings/components/ExportAnkiButton';
 import ExportAllButton from '@/features/settings/components/ExportAllButton';
 import ExportLibraryButtons from '@/features/settings/components/ExportLibraryButtons';
 import ImportMarkdownCard from '@/features/settings/components/ImportMarkdownCard';
+import LlmCheckButton from '@/features/settings/components/LlmCheckButton';
 import ShortcutsHelpEntry from '@/features/settings/components/ShortcutsHelpEntry';
 import { OnboardingSettings } from '@/features/onboarding';
 import {
@@ -149,6 +150,10 @@ export default function SettingsPage() {
               系统每晚 23:00（北京时间）自动整理当天记录。也可以现在手动触发。
             </p>
             <DigestNowButton />
+            <p className="pt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
+              切换 AI 供应商（如智谱 GLM / Kimi）后，点此实测当前供应商：连通性、延迟、模型，并看一段示例总结判断质量。
+            </p>
+            <LlmCheckButton />
           </div>
 
           <div className="space-y-2.5">

@@ -20,6 +20,7 @@
 
 import {
   resolveLlmProvider,
+  resolveLlmJsonMode,
   resolveVisionProvider,
   type LlmProviderConfig,
 } from './providers';
@@ -78,6 +79,52 @@ export class LlmVisionError extends Error {
     super(message);
     this.name = 'LlmVisionError';
   }
+}
+
+/**
+ * Chat 补全 HTTP 非 2xx 错误（带状态码 + 响应体），便于上层判定是否触发 json 自动回退。
+ * message 与改造前逐字一致（`LLM API(provider) status（task=…）：<detail 前 300 字>`），
+ * 故既有「按 message 透出/降级」的调用方与日志不受影响。
+ */
+export class LlmHttpError extends Error {
+  readonly status: number;
+  readonly task: string;
+  /** 原始响应体（用于 isResponseFormatUnsupported 判定；message 里只截前 300 字）。 */
+  readonly detail: string;
+  constructor(provider: string, status: number, task: string, detail: string) {
+    super(`LLM API(${provider}) ${status}（task=${task}）：${(detail || '').slice(0, 300)}`);
+    this.name = 'LlmHttpError';
+    this.status = status;
+    this.task = task;
+    this.detail = detail || '';
+  }
+}
+
+// ============ json 模式自动回退：判定「该不该去掉 response_format 重试」 ============
+
+/**
+ * 判断一次 HTTP 400 是否「疑似因 response_format / 不支持的参数」导致——用于 jsonMode 自动回退。
+ *
+ * 触发条件（保守，避免吞掉真正的内容错误）：响应体（小写后）含以下任一关键字。
+ * 覆盖常见 OpenAI 兼容供应商对不支持 `response_format` 的报错措辞（含中英文）。
+ * 注：调用处仅在 **jsonMode && HTTP 400** 时才会询问本函数；非 400 / 非 jsonMode 一律不回退。
+ */
+export function isResponseFormatUnsupported(status: number, body: string): boolean {
+  if (status !== 400) return false;
+  const b = (body || '').toLowerCase();
+  return (
+    b.includes('response_format') ||
+    b.includes('json_object') ||
+    b.includes('json mode') ||
+    b.includes('unsupported parameter') ||
+    b.includes('unknown parameter') ||
+    b.includes('unrecognized') ||
+    b.includes('invalid parameter') ||
+    b.includes('not supported') ||
+    b.includes("doesn't support") ||
+    b.includes('does not support') ||
+    b.includes('不支持')
+  );
 }
 
 // ============ 类型 ============
@@ -213,10 +260,14 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
       ));
 
   // 构造请求体（complete / stream 共用）。模型名来自当前 provider 配置。
+  //
+  // @param withResponseFormat 是否在 jsonMode 下带 response_format:{type:'json_object'}。
+  //   缺省由 LLM_JSON_MODE 决定（auto/on→带，off→不带）；自动回退时调用方显式传 false。
   function buildRequestBody(
     cfg: LlmProviderConfig,
     prompt: string,
-    opts: LlmCallOpts
+    opts: LlmCallOpts,
+    withResponseFormat?: boolean
   ): Record<string, unknown> {
     const model = modelForTier(cfg, opts.model);
     // OpenAI 兼容消息：system（可选）+ user。json() 路径已确保 prompt/system 含 "JSON" 字样。
@@ -226,7 +277,11 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
 
     const body: Record<string, unknown> = { model, messages };
     // 仅 JSON 任务设 response_format（text() 输出 Markdown/纯文本不能设）。
-    if (opts.jsonMode) body.response_format = { type: 'json_object' };
+    // LLM_JSON_MODE=off 时从不带（直接靠 prompt）；auto/on 带；回退路径显式传 false 去掉。
+    const useResponseFormat = withResponseFormat ?? resolveLlmJsonMode() !== 'off';
+    if (opts.jsonMode && useResponseFormat) {
+      body.response_format = { type: 'json_object' };
+    }
     // 注意：不设 max_tokens，避免长输出被截断。
     if (opts.maxTokens) body.max_tokens = opts.maxTokens;
     return body;
@@ -237,43 +292,69 @@ export function createAnthropicClient(options?: { logUsage?: UsageLogger }): Llm
     if (!cfg.apiKey) throw new LlmKeyMissingError(cfg.apiKeyEnv);
 
     const model = modelForTier(cfg, opts.model);
-    const body = buildRequestBody(cfg, prompt, opts);
 
-    const res = await fetch(cfg.chatUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${cfg.apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+    // 发一次 POST 并返回模型文本。withResponseFormat 控制 jsonMode 下是否带 response_format。
+    // HTTP 非 2xx → 抛 LlmHttpError（带 status + 响应体），便于上层判定是否触发 json 回退。
+    const postOnce = async (withResponseFormat: boolean): Promise<string> => {
+      const body = buildRequestBody(cfg, prompt, opts, withResponseFormat);
+      const res = await fetch(cfg.chatUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${cfg.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
 
-    if (!res.ok) {
-      const detail = await res.text();
-      throw new Error(
-        `LLM API(${cfg.provider}) ${res.status}（task=${opts.task}）：${detail.slice(0, 300)}`
-      );
-    }
+      if (!res.ok) {
+        const detail = await res.text();
+        throw new LlmHttpError(cfg.provider, res.status, opts.task, detail);
+      }
 
-    const data = (await res.json()) as {
-      choices?: { message?: { content?: string } }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number };
+      const data = (await res.json()) as {
+        choices?: { message?: { content?: string } }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
+
+      try {
+        await logUsage({
+          task: opts.task,
+          model,
+          inputTokens: data.usage?.prompt_tokens ?? 0,
+          outputTokens: data.usage?.completion_tokens ?? 0,
+        });
+      } catch (err) {
+        console.error('[llm] usage 日志写入失败：', err);
+      }
+
+      const text = data.choices?.[0]?.message?.content ?? '';
+      if (!text) throw new Error(`通义千问返回空内容（task=${opts.task}）`);
+      return text;
     };
 
-    try {
-      await logUsage({
-        task: opts.task,
-        model,
-        inputTokens: data.usage?.prompt_tokens ?? 0,
-        outputTokens: data.usage?.completion_tokens ?? 0,
-      });
-    } catch (err) {
-      console.error('[llm] usage 日志写入失败：', err);
-    }
+    // LLM_JSON_MODE：auto=带 response_format + 失败回退；on=带不回退；off=本就不带。
+    const jsonMode = resolveLlmJsonMode();
+    const wantResponseFormat = !!opts.jsonMode && jsonMode !== 'off';
 
-    const text = data.choices?.[0]?.message?.content ?? '';
-    if (!text) throw new Error(`通义千问返回空内容（task=${opts.task}）`);
-    return text;
+    try {
+      return await postOnce(wantResponseFormat);
+    } catch (err) {
+      // 自动回退：仅当「带了 response_format（jsonMode 且 auto）」且本次是 response_format/参数类 400，
+      // 才去掉 response_format 重试一次（prompt 已含「输出合法 JSON」，json() 外层另有解析重试兜底）。
+      // on 模式不回退；off 模式本就没带；非 400 / 非该类报错照常抛（走既有降级）。
+      if (
+        wantResponseFormat &&
+        jsonMode === 'auto' &&
+        err instanceof LlmHttpError &&
+        isResponseFormatUnsupported(err.status, err.detail)
+      ) {
+        console.warn(
+          `[llm] ${cfg.provider} 疑似不支持 response_format（task=${opts.task}，HTTP 400），去掉后重试一次`
+        );
+        return await postOnce(false);
+      }
+      throw err;
+    }
   };
 
   // 流式补全：OpenAI 兼容 SSE（stream:true），逐 chunk 透传 delta.content。
