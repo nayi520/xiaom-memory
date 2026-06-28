@@ -16,6 +16,7 @@
 import { buildLlmClient, type LlmCallOpts } from '../src/lib/llm';
 import {
   runDigestForUser,
+  runDigestForAllUsers,
   dayWindow,
   initialFsrsState,
   SIMILARITY_THRESHOLD,
@@ -65,6 +66,16 @@ class MemoryStore implements DigestStore {
     return Array.from(ids);
   }
 
+  async listUserIdsWithInboxUpTo(toIso: string) {
+    const ids = new Set<string>();
+    for (const n of Array.from(this.notes.values())) {
+      if (n.status === 'inbox' && n.created_at < toIso) {
+        ids.add(n.user_id);
+      }
+    }
+    return Array.from(ids);
+  }
+
   async listInboxNotes(userId: string, fromIso: string, toIso: string) {
     return Array.from(this.notes.values())
       .filter(
@@ -74,6 +85,12 @@ class MemoryStore implements DigestStore {
           n.created_at >= fromIso &&
           n.created_at < toIso
       )
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+
+  async listAllInboxNotes(userId: string) {
+    return Array.from(this.notes.values())
+      .filter((n) => n.user_id === userId && n.status === 'inbox')
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
   }
 
@@ -433,6 +450,106 @@ async function main() {
       .every((c) => c.model === 'haiku'),
     'P1/P2/P4/P7 全部用 haiku'
   );
+
+  // ============ scope='all'：往日积压补整理（搁置缺口修复验证） ============
+  console.log('\n— scope=all：往日积压不再被永久搁置 —');
+  {
+    const store2 = new MemoryStore();
+    // 一条「昨天」创建、至今仍 inbox 的旧记录（落在当天窗口之外）
+    const oldIso = new Date(new Date(window.fromIso).getTime() - 12 * 3600 * 1000).toISOString();
+    store2.notes.set('note-old', {
+      id: 'note-old',
+      user_id: userId,
+      type: 'text',
+      raw_content: '峰终定律：人对体验的记忆由峰值和结尾决定',
+      transcript: null,
+      url: null,
+      media_path: null,
+      why_important: null,
+      status: 'inbox',
+      created_at: oldIso,
+    });
+
+    // 默认 scope（today）：旧记录在窗口外 → 取不到（这正是「搁置」缺口）
+    const todayRun = await runDigestForUser(userId, {
+      store: store2,
+      llm,
+      embed: mockEmbed,
+      now,
+      log: () => {},
+    });
+    assert(todayRun.notesTotal === 0, `scope=today 取不到往日 inbox（实际 ${todayRun.notesTotal}）`);
+    assert(
+      store2.notes.get('note-old')!.status === 'inbox',
+      'scope=today 后旧记录仍滞留 inbox（复现搁置）'
+    );
+
+    // scope='all'：不设时间下限 → 旧记录被整理，产出概念与卡片
+    const allRun = await runDigestForUser(userId, {
+      store: store2,
+      llm,
+      embed: mockEmbed,
+      now,
+      scope: 'all',
+      log: () => {},
+    });
+    assert(allRun.notesTotal === 1, `scope=all 取到 1 条往日 inbox（实际 ${allRun.notesTotal}）`);
+    assert(allRun.notesProcessed === 1, `scope=all 处理成功 1 条（实际 ${allRun.notesProcessed}）`);
+    assert(
+      store2.notes.get('note-old')!.status === 'processed',
+      'scope=all 后旧记录 → processed（搁置已修复）'
+    );
+    assert(allRun.conceptsCreated >= 1, `scope=all 为旧记录产出概念（实际 ${allRun.conceptsCreated}）`);
+    assert(allRun.cardsCreated >= 1, `scope=all 为旧记录产出卡片（实际 ${allRun.cardsCreated}）`);
+    assert(
+      allRun.period === window.period,
+      `scope=all 日报 period 仍按今天 ${window.period}（实际 ${allRun.period}）`
+    );
+
+    // 幂等：再跑一次，已 processed 不再入选
+    const allRun2 = await runDigestForUser(userId, {
+      store: store2,
+      llm,
+      embed: mockEmbed,
+      now,
+      scope: 'all',
+      log: () => {},
+    });
+    assert(allRun2.notesTotal === 0, `scope=all 幂等：已 processed 不重复处理（实际 ${allRun2.notesTotal}）`);
+  }
+
+  // ============ cron 自愈：runDigestForAllUsers 含往日漏整理 ============
+  console.log('\n— cron 自愈：runDigestForAllUsers 处理往日漏整理 —');
+  {
+    const store3 = new MemoryStore();
+    const oldIso = new Date(new Date(window.fromIso).getTime() - 36 * 3600 * 1000).toISOString();
+    store3.notes.set('note-stale', {
+      id: 'note-stale',
+      user_id: userId,
+      type: 'text',
+      raw_content: '峰终定律：人对体验的记忆由峰值和结尾决定',
+      transcript: null,
+      url: null,
+      media_path: null,
+      why_important: null,
+      status: 'inbox',
+      created_at: oldIso,
+    });
+
+    const results = await runDigestForAllUsers({
+      store: store3,
+      llm,
+      embed: mockEmbed,
+      now,
+      log: () => {},
+    });
+    assert(results.length === 1, `cron 选中 1 个有 inbox 的用户（实际 ${results.length}）`);
+    assert(results[0]?.notesProcessed === 1, `cron 处理往日漏整理 1 条（实际 ${results[0]?.notesProcessed}）`);
+    assert(
+      store3.notes.get('note-stale')!.status === 'processed',
+      'cron 自愈后往日记录 → processed'
+    );
+  }
 
   console.log(
     `\n${failed === 0 ? '✅ 全部通过' : `❌ ${failed} 项失败`}（LLM mock 调用共 ${llmCalls.length} 次）`

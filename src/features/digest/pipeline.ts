@@ -62,8 +62,18 @@ export interface CorrectionRow {
 export interface DigestStore {
   /** 当日窗口内有 inbox 记录的全部用户（cron 全量跑用） */
   listUserIdsWithInbox(fromIso: string, toIso: string): Promise<string[]>;
+  /**
+   * 截至 toIso（不设时间下限）仍有 inbox 记录的全部用户（cron 自愈：含往日漏整理）。
+   * 用 `<= toIso`，把"今天之前没跑到的天"一并纳入，避免漏跑的日子永久搁置。
+   */
+  listUserIdsWithInboxUpTo(toIso: string): Promise<string[]>;
   /** 某用户当日窗口内的 inbox 记录 */
   listInboxNotes(userId: string, fromIso: string, toIso: string): Promise<Note[]>;
+  /**
+   * 某用户【全部】待整理（inbox）记录，不设时间下限（"立即整理"补积压用）。
+   * 仍按 status=inbox + 排除软删 + 限定本人；按 created_at 升序。
+   */
+  listAllInboxNotes(userId: string): Promise<Note[]>;
   /** 现有类目体系 {领域: [主题...]} */
   getDomainsTopics(userId: string): Promise<Record<string, string[]>>;
   /** 最近 N 条用户修正记录 */
@@ -98,12 +108,22 @@ export interface DigestStore {
   saveDailyDigest(userId: string, period: string, contentMd: string): Promise<void>;
 }
 
+/**
+ * 整理范围：
+ *   - 'today'（默认）：只整理"今天"（Asia/Shanghai）创建的 inbox 记录 —— cron 每日语义。
+ *   - 'all'：整理该用户【全部】待整理（inbox）记录，不设时间下限 ——
+ *     "立即整理"补积压、cron 自愈漏整理用。日报 period 仍按今天，但概念/卡片提炼覆盖全部 pending。
+ */
+export type DigestScope = 'today' | 'all';
+
 export interface DigestDeps {
   store: DigestStore;
   llm: LlmClient;
   embed: EmbedFn;
   /** 流水线运行时刻，默认 new Date()（按 Asia/Shanghai 折算"当日"） */
   now?: Date;
+  /** 整理范围，缺省 'today'（保持 cron 每日语义）。'all' = 含往日积压。 */
+  scope?: DigestScope;
   log?: (msg: string) => void;
 }
 
@@ -180,6 +200,7 @@ export async function runDigestForUser(
   const { store, llm, embed } = deps;
   const log = deps.log ?? ((msg: string) => console.log(`[digest] ${msg}`));
   const window = dayWindow(deps.now);
+  const scope: DigestScope = deps.scope ?? 'today';
 
   const result: DigestResult = {
     userId,
@@ -194,9 +215,14 @@ export async function runDigestForUser(
     errors: [],
   };
 
-  const notes = await store.listInboxNotes(userId, window.fromIso, window.toIso);
+  // scope='all'：取全部 pending（含往日积压，不设时间下限）；'today'：仅当天窗口。
+  // 两者都已限定 status=inbox + 排除软删 + 限定本人（见 store）。
+  const notes =
+    scope === 'all'
+      ? await store.listAllInboxNotes(userId)
+      : await store.listInboxNotes(userId, window.fromIso, window.toIso);
   result.notesTotal = notes.length;
-  log(`user=${userId} period=${window.period} inbox=${notes.length}`);
+  log(`user=${userId} period=${window.period} scope=${scope} inbox=${notes.length}`);
   if (notes.length === 0) return result;
 
   const domainsTopics = await store.getDomainsTopics(userId);
@@ -409,12 +435,17 @@ export async function runDigestForUser(
 
 export async function runDigestForAllUsers(deps: DigestDeps): Promise<DigestResult[]> {
   const window = dayWindow(deps.now);
-  const userIds = await deps.store.listUserIdsWithInbox(window.fromIso, window.toIso);
+  // cron 自愈（catch-up）：取截至今天结束仍有 inbox 的全部用户（不设下限），
+  // 把"今天之前漏整理的天"一并纳入，使漏跑的日子不再永久搁置。
+  // 每个用户以 scope='all' 跑：清掉其全部 pending（含往日积压）；已 processed 不会再入选（幂等）。
+  // 用户归属由 listUserIdsWithInboxUpTo + runDigestForUser 内按 userId 过滤保证。
+  const userIds = await deps.store.listUserIdsWithInboxUpTo(window.toIso);
+  const perUserDeps: DigestDeps = { ...deps, scope: 'all' };
   const results: DigestResult[] = [];
   for (const userId of userIds) {
     // 单个用户失败不阻塞其他用户
     try {
-      results.push(await runDigestForUser(userId, deps));
+      results.push(await runDigestForUser(userId, perUserDeps));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`[digest] user=${userId} 流水线异常：${msg}`);

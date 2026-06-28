@@ -13,6 +13,13 @@ export const maxDuration = 300;
 /**
  * POST /api/digest/run —— "立即整理"（仅当前登录用户）
  * 设置页手动触发，便于开发调试与白天即时整理。
+ *
+ * 范围：scope='all' —— 整理该用户【全部】待整理（inbox）记录，含往日积压
+ * （不只当天），让用户可一键补整理被搁置的旧记录。日报 period 仍按今天。
+ *
+ * 成本注意：'all' 一次可能整理很多条，每个概念都会触发 embedding + 多次 LLM 调用。
+ * 仍由下方 embedding 每日配额闸保护（计"整理一次"为一次额度）；积压很大时
+ * 单次整理耗时/成本相应上升，maxDuration=300 给足时长。
  */
 export async function POST() {
   const user = await getCurrentUser();
@@ -44,6 +51,7 @@ export async function POST() {
       store: createDigestStore(getDb()),
       llm: createAnthropicClient(),
       embed,
+      scope: 'all', // 整理全部待整理记录（含往日积压），不只当天
     });
     return NextResponse.json({ ok: true, result });
   } catch (err) {

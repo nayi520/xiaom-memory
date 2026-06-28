@@ -76,6 +76,21 @@ export function createDigestStore(db: Database): DigestStore & WeeklyStore {
       return rows.map((r) => r.userId);
     },
 
+    async listUserIdsWithInboxUpTo(toIso) {
+      // cron 自愈：截至 toIso（不设下限）仍有 inbox 的用户，含往日漏整理。
+      const rows = await db
+        .selectDistinct({ userId: notes.userId })
+        .from(notes)
+        .where(
+          and(
+            eq(notes.status, 'inbox'),
+            isNull(notes.deletedAt),
+            lt(notes.createdAt, new Date(toIso))
+          )
+        );
+      return rows.map((r) => r.userId);
+    },
+
     async listInboxNotes(userId, fromIso, toIso) {
       const rows = await db
         .select()
@@ -87,6 +102,22 @@ export function createDigestStore(db: Database): DigestStore & WeeklyStore {
             isNull(notes.deletedAt),
             gte(notes.createdAt, new Date(fromIso)),
             lt(notes.createdAt, new Date(toIso))
+          )
+        )
+        .orderBy(asc(notes.createdAt));
+      return rows.map(rowToNote);
+    },
+
+    async listAllInboxNotes(userId) {
+      // "立即整理"补积压：该用户全部 pending（不设时间下限），仍限定本人 + status=inbox + 排除软删。
+      const rows = await db
+        .select()
+        .from(notes)
+        .where(
+          and(
+            eq(notes.userId, userId),
+            eq(notes.status, 'inbox'),
+            isNull(notes.deletedAt)
           )
         )
         .orderBy(asc(notes.createdAt));
