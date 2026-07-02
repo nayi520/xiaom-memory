@@ -23,6 +23,7 @@ import { profiles } from '@/lib/db/schema';
 import { excerpt } from '@/features/library/search';
 import ConceptEditor from '@/features/library/components/ConceptEditor';
 import NewCardButton from '@/features/library/components/NewCardButton';
+import CardDeleteButton from '@/features/library/components/CardDeleteButton';
 import GenerateCardsButton from '@/features/library/components/GenerateCardsButton';
 import FavoriteToggle from '@/features/library/components/FavoriteToggle';
 import {
@@ -295,9 +296,12 @@ export default async function ConceptDetailPage({
                   key={card.id}
                   className={cn(cardClass({ padded: false }), 'px-4 py-3.5')}
                 >
-                  <p className="font-medium leading-snug text-zinc-800 dark:text-zinc-100">
-                    {card.question}
-                  </p>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 flex-1 font-medium leading-snug text-zinc-800 dark:text-zinc-100">
+                      {card.question}
+                    </p>
+                    <CardDeleteButton cardId={card.id} />
+                  </div>
                   <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
                     <span className="inline-flex items-center gap-1">
                       {card.status === 'graduated' && (

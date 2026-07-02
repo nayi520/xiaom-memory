@@ -6,11 +6,12 @@
  * 复习中：问题 → 点击/空格翻面 → 答案 + 四档自评（键盘 1-4）→ 自动下一张。
  *   - 进度条（本次第 n / 共 m 张）+ 连击（连续 记得/轻松 计数）+ 今日目标进度。
  *   - 桌面端标注键盘快捷键提示（空格翻面、1-4 评分）。
- *   - 答案面可展开「查看原始记录」溯源，并可就地编辑卡片 Q/A、暂停（埋葬）卡片。
+ *   - 答案面可展开「查看原始记录」溯源，并可就地编辑卡片 Q/A、暂停（埋葬）卡片、永久删除卡片。
  * 完成页：本次张数、正确率（rating≥3 占比）、下次到期时间、四档分布；「回首页 / 继续复习」。
  *   - 「全部跳过今天」无罪化退出（PRD 风险对策）。
  *
- * 卡片管理走 PATCH /api/cards/{id}（编辑 question/answer，或 status='suspended' 暂停）。
+ * 卡片管理走 /api/cards/{id}：PATCH 编辑 question/answer 或 status='suspended' 暂停；
+ * DELETE 永久删除（二次确认，区别于暂停：删除不可恢复）。
  * 评分走 POST /api/review，读返回的 nextDueAt（下次到期）与 graduated（毕业）。
  */
 
@@ -37,6 +38,7 @@ import {
   ChevronLeft,
   EditIcon,
   SuspendIcon,
+  TrashIcon,
   ComboIcon,
   GoalIcon,
   DueIcon,
@@ -152,6 +154,8 @@ export default function ReviewSession({
   const [edits, setEdits] = useState<Record<string, { question: string; answer: string }>>({});
   // 本次会话暂停的卡片张数（仅用于完成页提示，暂停后线性流不再回到该卡）。
   const [suspendedCount, setSuspendedCount] = useState(0);
+  // 本次会话永久删除的卡片张数（仅用于完成页提示）。
+  const [deletedCount, setDeletedCount] = useState(0);
   // 撤销上一次评分（V14，会话内）：记下刚评分卡的索引/卡 id/评分前快照/所评档位，
   // 供「撤销」回退一张并还原服务端状态。null = 当前无可撤销。
   const [lastRated, setLastRated] = useState<{
@@ -168,6 +172,9 @@ export default function ReviewSession({
   const [draftA, setDraftA] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
   const [suspending, setSuspending] = useState(false);
+  // 永久删除当前卡：先二次确认（区别于暂停），确认中显示「确认删除 / 取消」。
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // 复习续做（V20）：'pending' = 检测到未完成会话、等用户选「继续/重新开始」；
   // 'resumed' = 已恢复进度；'fresh' = 全新开始（无存档或用户选重来）。
@@ -301,13 +308,14 @@ export default function ReviewSession({
     setSavingEdit(false);
   }, []);
 
-  /** 推进到下一张（或结束）。复用于评分后与暂停后。 */
+  /** 推进到下一张（或结束）。复用于评分后、暂停后与删除后。 */
   const advance = useCallback(() => {
     setFlipped(false);
     setShowSource(false);
     setSwipeDX(0);
     swipeStart.current = null;
     swipeAxis.current = 'undecided';
+    setConfirmingDelete(false);
     closeEdit();
     setIdx((i) => {
       const next = i + 1;
@@ -464,6 +472,40 @@ export default function ReviewSession({
     }
   }, [current, suspending, advance, success, toastError]);
 
+  /**
+   * 永久删除当前卡（DELETE /api/cards/{id}）：区别于暂停——不可恢复。
+   * 乐观流：先记下当前卡索引，立即推进到下一张；失败则回滚（退回那张卡、扣减计数、恢复未完成态）并报错。
+   */
+  const deleteCard = useCallback(async () => {
+    if (!current || deleting) return;
+    setDeleting(true);
+    const id = current.id;
+    const fromIdx = idx;
+    const wasFinished = finished;
+    // 乐观移除：立即跳到下一张（advance 内会清确认态）。
+    setDeletedCount((n) => n + 1);
+    advance();
+    try {
+      const res = await apiFetch(`/api/cards/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `删除失败（${res.status}）`);
+      }
+      success('已永久删除这张卡片');
+      setDeleting(false);
+    } catch (err) {
+      // 回滚：撤销乐观推进——退回到那张卡、扣减删除计数、恢复未完成态。
+      setDeletedCount((n) => Math.max(0, n - 1));
+      if (wasFinished === false) setFinished(false);
+      setIdx(fromIdx);
+      setFlipped(true);
+      setShowSource(false);
+      setConfirmingDelete(false);
+      setDeleting(false);
+      toastError(err instanceof Error ? err.message : '删除失败，卡片已保留');
+    }
+  }, [current, deleting, idx, finished, advance, success, toastError]);
+
   // 键盘：空格/回车翻面，1-4 评分（编辑态下让位给输入框，不拦截）。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -618,6 +660,12 @@ export default function ReviewSession({
                   <li className="inline-flex items-center gap-1 rounded-pill border border-zinc-200 bg-zinc-50 px-2.5 py-1 font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
                     <SuspendIcon aria-hidden className="h-3.5 w-3.5" />
                     暂停 {suspendedCount}
+                  </li>
+                )}
+                {deletedCount > 0 && (
+                  <li className="inline-flex items-center gap-1 rounded-pill border border-red-200 bg-red-50 px-2.5 py-1 font-medium text-red-500 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+                    <TrashIcon aria-hidden className="h-3.5 w-3.5" />
+                    删除 {deletedCount}
                   </li>
                 )}
               </ul>
@@ -961,31 +1009,77 @@ export default function ReviewSession({
                     </div>
                   )}
 
-                  {/* 卡片管理：编辑 Q/A、暂停（埋葬） */}
-                  <div className="mt-5 flex items-center gap-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDraftQ(current.question);
-                        setDraftA(current.answer);
-                        setEditing(true);
-                      }}
-                      className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-zinc-500 transition hover:text-brand focus-visible:outline-none dark:text-zinc-400"
-                    >
-                      <EditIcon aria-hidden className="h-3.5 w-3.5" />
-                      编辑卡片
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        suspendCard();
-                      }}
-                      disabled={suspending}
-                      className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-zinc-500 transition hover:text-red-500 focus-visible:outline-none disabled:opacity-50 dark:text-zinc-400"
-                    >
-                      <SuspendIcon aria-hidden className="h-3.5 w-3.5" />
-                      暂停卡片
-                    </button>
+                  {/* 卡片管理：编辑 Q/A、暂停（埋葬）、永久删除 */}
+                  <div className="mt-5 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+                    {confirmingDelete ? (
+                      /* 删除二次确认（区别于暂停：强调不可恢复） */
+                      <div className="animate-scale-in flex flex-col gap-2">
+                        <p className="text-xs font-medium text-red-500">
+                          永久删除这张卡片？不可恢复。
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="dangerSolid"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteCard();
+                            }}
+                            loading={deleting}
+                          >
+                            {!deleting && <TrashIcon aria-hidden className="h-3.5 w-3.5" />}
+                            确认删除
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmingDelete(false);
+                            }}
+                            disabled={deleting}
+                          >
+                            取消
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDraftQ(current.question);
+                            setDraftA(current.answer);
+                            setEditing(true);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-zinc-500 transition hover:text-brand focus-visible:outline-none dark:text-zinc-400"
+                        >
+                          <EditIcon aria-hidden className="h-3.5 w-3.5" />
+                          编辑卡片
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            suspendCard();
+                          }}
+                          disabled={suspending}
+                          className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-zinc-500 transition hover:text-amber-600 focus-visible:outline-none disabled:opacity-50 dark:text-zinc-400"
+                        >
+                          <SuspendIcon aria-hidden className="h-3.5 w-3.5" />
+                          暂停卡片
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmingDelete(true);
+                          }}
+                          className="ml-auto inline-flex items-center gap-1 rounded-md text-xs font-medium text-zinc-500 transition hover:text-red-500 focus-visible:outline-none dark:text-zinc-400"
+                        >
+                          <TrashIcon aria-hidden className="h-3.5 w-3.5" />
+                          删除卡片
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (

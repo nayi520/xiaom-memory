@@ -11,6 +11,8 @@
  * 5. P2 → 卡片落库，fsrs_state 初始 {stability:null,difficulty:null,reps:0,due:明天}
  * 6. embedding → match_concepts（排除本次新建概念）→ P3 确认 → concept_links
  * 7. P4 → digests(type='daily') 落库
+ * 8. 单条 note 卡片封顶（MEMORY_MAX_CARDS_PER_NOTE，默认 3）：3 概念 × 每概念 2 卡 → 最终 ≤ 3，
+ *    靠前概念优先保留、达上限后剩余概念跳过 P2
  */
 
 import { buildLlmClient, type LlmCallOpts } from '../src/lib/llm';
@@ -548,6 +550,100 @@ async function main() {
     assert(
       store3.notes.get('note-stale')!.status === 'processed',
       'cron 自愈后往日记录 → processed'
+    );
+  }
+
+  // ============ 单条 note 卡片封顶（MEMORY_MAX_CARDS_PER_NOTE，默认 3） ============
+  // 一条 note → P1 给 3 个概念（C-甲/C-乙/C-丙，按重要性排）→ 每概念 P2 给 2 张卡（无封顶本应 6 张）。
+  // 断言：最终总卡数 ≤ 3；靠前概念（C-甲）的卡优先保留；达上限后剩余概念跳过 P2（不调 LLM）。
+  console.log('\n— 单条 note 卡片封顶（每条 ≤ 3 张）—');
+  {
+    const capStore = new MemoryStore();
+    capStore.notes.set('note-cap', {
+      id: 'note-cap',
+      user_id: userId,
+      type: 'text',
+      raw_content: '一条信息量很大的记录，会被拆成多个概念',
+      transcript: null,
+      url: null,
+      media_path: null,
+      why_important: null,
+      status: 'inbox',
+      created_at: todayIso,
+    });
+
+    // 隔离的 mock LLM：P1 稳定给 3 概念（按重要性排）、P2 每概念给 2 张（卡文案带概念名，便于验证优先级）。
+    const capCalls: { task: string; concept?: string }[] = [];
+    const capLlm = buildLlmClient(async (prompt: string, opts: LlmCallOpts) => {
+      switch (opts.task) {
+        case 'P1':
+          return JSON.stringify({
+            domain: '心理学',
+            topic: '综合',
+            tags: ['甲', '乙', '丙'],
+            summary: '一条被拆成三个概念的长记录。',
+            // 按重要性从高到低：C-甲 最重要。
+            concepts: [
+              { name: 'C-甲', explanation: '最重要的概念甲。' },
+              { name: 'C-乙', explanation: '次要的概念乙。' },
+              { name: 'C-丙', explanation: '再次的概念丙。' },
+            ],
+          });
+        case 'P2': {
+          // 从 prompt 里辨认当前概念名，制两张带概念名前缀的卡（用于验证「靠前优先保留」）。
+          const c = prompt.includes('C-甲') ? '甲' : prompt.includes('C-乙') ? '乙' : '丙';
+          capCalls.push({ task: 'P2', concept: c });
+          return JSON.stringify({
+            cards: [
+              { question: `${c}-Q1`, answer: `${c}-A1` },
+              { question: `${c}-Q2`, answer: `${c}-A2` },
+            ],
+          });
+        }
+        case 'P3':
+          return JSON.stringify({ related: false, relation_type: '', reason: '' });
+        case 'P4':
+          return '# 简报\n封顶测试。';
+        default:
+          throw new Error(`未知 task：${opts.task}`);
+      }
+    });
+
+    const capRun = await runDigestForUser(userId, {
+      store: capStore,
+      llm: capLlm,
+      embed: mockEmbed,
+      now,
+      log: () => {},
+    });
+
+    // 概念仍全建（封顶只作用于制卡，不影响概念/embedding/关联）。
+    assert(capRun.conceptsCreated === 3, `封顶下 3 个概念仍全建（实际 ${capRun.conceptsCreated}）`);
+    // 核心断言：单条 note 最终总卡数 ≤ 3（无封顶本应 6 张）。
+    assert(capRun.cardsCreated <= 3, `单条 note 总卡数 ≤ 3（实际 ${capRun.cardsCreated}）`);
+    assert(capStore.cards.length <= 3, `实际落库卡数 ≤ 3（实际 ${capStore.cards.length}）`);
+    assert(
+      capRun.cardsCreated === capStore.cards.length,
+      `cardsCreated 按实际插入数计（result=${capRun.cardsCreated} / 落库=${capStore.cards.length}）`
+    );
+    // 靠前概念优先：C-甲 的两张卡应都在（额度 3 = 甲2 + 乙1），且不应出现最靠后 C-丙 的卡。
+    const capQuestions = capStore.cards.map((c) => c.question);
+    assert(
+      capQuestions.includes('甲-Q1') && capQuestions.includes('甲-Q2'),
+      '靠前概念 C-甲 的卡优先保留（甲-Q1 / 甲-Q2 均在）'
+    );
+    assert(
+      !capQuestions.some((q) => q.startsWith('丙-')),
+      '达上限后最靠后概念 C-丙 未制卡（其卡不在）'
+    );
+    // 达上限后剩余概念跳过 P2：P2 只应被调用 2 次（甲、乙），C-丙 不调。
+    assert(
+      capCalls.filter((c) => c.task === 'P2').length === 2,
+      `达上限后跳过 P2：P2 仅调用 2 次（甲/乙），C-丙 跳过（实际 ${capCalls.filter((c) => c.task === 'P2').length}）`
+    );
+    assert(
+      !capCalls.some((c) => c.task === 'P2' && c.concept === '丙'),
+      'C-丙 未触发 P2 调用（省 LLM 成本）'
     );
   }
 

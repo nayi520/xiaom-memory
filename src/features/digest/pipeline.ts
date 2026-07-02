@@ -36,6 +36,18 @@ export const CORRECTIONS_LIMIT = 5;
 /** 默认时区（"当日"按此计算） */
 export const DIGEST_TIMEZONE = 'Asia/Shanghai';
 
+/**
+ * 单条 note 最多产出的复习卡数（硬封顶）。默认 3；env `MEMORY_MAX_CARDS_PER_NOTE` 可调，
+ * 非法 / 非正值回退 3。作用：输入内容较多时，一条 note 会被 P1 拆成多个概念、每概念 P2 又制 1-2 张，
+ * 无封顶时单条最多约 6 张。这里在概念循环内累计"本条已建卡数"，按剩余额度 slice 每概念的 P2 结果；
+ * 累计达上限后剩余概念**跳过 P2**（概念仍建 + embedding + 关联，只是不再制卡，省 LLM 成本），
+ * 优先保留靠前（P1 通常按重要性排）概念的卡。只作用于新整理，不影响已存在的卡。
+ */
+export const MAX_CARDS_PER_NOTE = (() => {
+  const n = Number(process.env.MEMORY_MAX_CARDS_PER_NOTE);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 3;
+})();
+
 // ============ 数据访问接口 ============
 
 export interface MatchedConcept {
@@ -273,7 +285,9 @@ export async function runDigestForUser(
         await store.ensureTags(userId, note.id, p1.tags);
       }
 
-      // ---- 每个概念：建概念 → P2 制卡 → embedding → 相似检索 → P3 关联 ----
+      // ---- 每个概念：建概念 →（未达封顶才）P2 制卡 → embedding → 相似检索 → P3 关联 ----
+      // 本条 note 已建卡数（跨概念累计），用于对 P2 结果按剩余额度 slice、达上限后跳过 P2。
+      let cardsThisNote = 0;
       for (const concept of p1.concepts ?? []) {
         const conceptId = await store.insertConcept(userId, {
           name: concept.name,
@@ -291,24 +305,32 @@ export async function runDigestForUser(
           createdAt,
         });
 
-        // P2 制卡
-        const p2 = await llm.json<P2Result>(
-          buildP2Prompt({
-            concept_name: concept.name,
-            concept_explanation: concept.explanation,
-            note_excerpt: content.slice(0, 500),
-            why_important: note.why_important ?? '（未填写）',
-          }),
-          { model: 'haiku', task: 'P2', system: GLOBAL_SYSTEM }
-        );
-        const cards = (p2.cards ?? []).filter((c) => c.question && c.answer);
-        if (cards.length > 0) {
-          await store.insertCards(
-            conceptId,
-            cards,
-            initialFsrsState(window.tomorrowIso)
+        // P2 制卡（受单条 note 封顶约束）：本条已达上限则跳过 P2——不调 LLM，
+        // 概念/embedding/关联照常，只是不再为这个（及后续）概念制卡，省成本。
+        const remainingQuota = MAX_CARDS_PER_NOTE - cardsThisNote;
+        if (remainingQuota > 0) {
+          const p2 = await llm.json<P2Result>(
+            buildP2Prompt({
+              concept_name: concept.name,
+              concept_explanation: concept.explanation,
+              note_excerpt: content.slice(0, 500),
+              why_important: note.why_important ?? '（未填写）',
+            }),
+            { model: 'haiku', task: 'P2', system: GLOBAL_SYSTEM }
           );
-          result.cardsCreated += cards.length;
+          // 有效卡按剩余额度 slice（如仅剩 1 张则本概念最多取 1 张），优先保留靠前概念的卡。
+          const cards = (p2.cards ?? [])
+            .filter((c) => c.question && c.answer)
+            .slice(0, remainingQuota);
+          if (cards.length > 0) {
+            await store.insertCards(
+              conceptId,
+              cards,
+              initialFsrsState(window.tomorrowIso)
+            );
+            result.cardsCreated += cards.length;
+            cardsThisNote += cards.length;
+          }
         }
 
         // embedding + 关联发现（embedding 不可用时跳过，不影响概念/卡片）
